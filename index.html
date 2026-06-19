@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Text-aware JPEG compression that protects letter edges." />
+  <title>Glyph — text-safe image compression</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#" aria-label="Glyph home"><span class="brand-mark">G</span> Glyph</a>
+    <span class="local-pill"><i></i> 100% local</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">TEXT-AWARE JPEG COMPRESSION</p>
+      <h1>Smaller images.<br><em>Sharp words.</em></h1>
+      <p class="lede">Glyph finds letter edges, quiets scanner noise, and compresses everything else more aggressively—without sending your files anywhere.</p>
+    </section>
+
+    <section class="workspace" aria-label="JPEG compressor">
+      <label class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Choose or drop a JPEG" for="fileInput">
+        <input id="fileInput" type="file" accept="image/jpeg,.jpg,.jpeg" hidden />
+        <div class="drop-icon" aria-hidden="true"><span>↓</span></div>
+        <h2>Drop a JPEG here</h2>
+        <p>or click to choose a file</p>
+        <small>JPEG · up to 30 MB</small>
+      </label>
+
+      <div class="editor" id="editor" hidden>
+        <div class="preview-wrap">
+          <canvas id="previewCanvas" aria-label="Image preview"></canvas>
+          <div class="preview-badge" id="previewBadge">Original</div>
+        </div>
+        <aside class="controls">
+          <div class="file-row">
+            <div><strong id="fileName"></strong><span id="fileMeta"></span></div>
+            <button class="icon-button" id="removeButton" aria-label="Remove image">×</button>
+          </div>
+
+          <div class="analysis-card">
+            <span class="scan-icon">Aa</span>
+            <div><strong id="analysisTitle">Analyzing text…</strong><span id="analysisText">Mapping high-contrast edges</span></div>
+          </div>
+
+          <fieldset>
+            <legend>Compression intent</legend>
+            <label class="preset selected"><input type="radio" name="preset" value="model" checked><span><b>Model context</b><small>Smallest visual-token budget</small></span><i></i></label>
+            <label class="preset"><input type="radio" name="preset" value="crisp"><span><b>Crisp text</b><small>Highest readability</small></span><i></i></label>
+            <label class="preset"><input type="radio" name="preset" value="balanced"><span><b>Balanced</b><small>Best size-to-clarity ratio</small></span><i></i></label>
+            <label class="preset"><input type="radio" name="preset" value="compact"><span><b>Compact</b><small>Smaller, still legible</small></span><i></i></label>
+          </fieldset>
+
+          <label class="toggle-row"><span><b>Ink Guard</b><small>Strengthen faint character strokes</small></span><input id="inkGuard" type="checkbox" checked><i></i></label>
+
+          <button class="compress-button" id="compressButton"><span>Compress intelligently</span><i>→</i></button>
+          <p class="status" id="status" aria-live="polite"></p>
+        </aside>
+      </div>
+
+      <div class="result" id="result" hidden>
+        <div class="result-top"><span class="success-check">✓</span><div><h2>Ready to read. Lighter to keep.</h2><p id="resultSummary"></p></div></div>
+        <div class="metric-grid">
+          <div><span>BEFORE</span><strong id="beforeSize"></strong></div>
+          <div class="arrow">→</div>
+          <div><span>AFTER</span><strong id="afterSize"></strong></div>
+          <div class="saved"><span>SAVED</span><strong id="savedPercent"></strong></div>
+        </div>
+        <div class="token-card" id="tokenCard"><span>ESTIMATED VISION BUDGET</span><strong id="tokenEstimate"></strong><small>Approximation based on the paper's reported 600×800 to 750×1000 results; actual tokenization depends on the target model.</small></div>
+        <div class="result-actions">
+          <button class="secondary-button" id="againButton">Compress another</button>
+          <button class="download-button" id="downloadButton" type="button"><span>Save JPEG</span><i>↓</i></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <p class="eyebrow">THE IDEA</p>
+      <h2>Not every pixel deserves<br>the same budget.</h2>
+      <div class="steps">
+        <article><span>01</span><h3>Find the ink</h3><p>A lightweight edge map locates probable character strokes without OCR or cloud services.</p></article>
+        <article><span>02</span><h3>Quiet the paper</h3><p>Flat backgrounds are gently quantized, removing scanner noise that wastes JPEG bytes.</p></article>
+        <article><span>03</span><h3>Test readability</h3><p>Glyph tries several JPEG qualities and keeps the smallest one that retains enough edge contrast.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer><span>Glyph / an experimental text-safe compressor</span><span>Files never leave your browser.</span></footer>
+  <script defer src="app.js"></script>
+</body>
+</html>
