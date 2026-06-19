@@ -1,6 +1,7 @@
 const API_BASE = location.protocol === 'file:' ? 'http://127.0.0.1:8000' : location.origin;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const THEME_KEY = 'piper-theme';
 
 let state = { messages: [], tasks: [], notes: [], memories: [], edges: [], config: {} };
 let activeView = 'chat';
@@ -9,9 +10,25 @@ let busy = false;
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  loadTheme();
   bindEvents();
   autoGrow($('#messageInput'));
   await loadState();
+}
+
+function loadTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = stored ? stored : (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(THEME_KEY, next);
+  toast(next === 'dark' ? 'Dark mode enabled' : 'Light mode enabled');
 }
 
 function bindEvents() {
@@ -34,6 +51,7 @@ function bindEvents() {
   $('#closeRail').addEventListener('click', () => $('#memoryRail').classList.remove('open'));
   $('#settingsButton').addEventListener('click', () => $('#connectionDialog').showModal());
   $('#newThread').addEventListener('click', () => { switchView('chat'); $('#messageInput').focus(); });
+  $('#themeToggle').addEventListener('click', toggleTheme);
   document.addEventListener('keydown', event => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); switchView('chat'); $('#messageInput').focus(); }
   });
