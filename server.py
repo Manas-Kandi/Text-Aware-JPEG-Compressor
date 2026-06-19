@@ -9,6 +9,7 @@ import re
 import sqlite3
 import textwrap
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,11 +45,22 @@ def load_env(path: Path) -> None:
 
 
 load_env(ROOT / ".env")
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "openrouter").lower()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "http://127.0.0.1:8000")
+OPENROUTER_APP_TITLE = os.getenv("OPENROUTER_APP_TITLE", "Piper Agentic Memory")
+OPENROUTER_REASONING = os.getenv("OPENROUTER_REASONING", "true").lower() == "true"
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", "openrouter/free")
+
+# Optional legacy provider. Set MODEL_PROVIDER=nvidia to use it.
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/")
-MAIN_MODEL = os.getenv("MAIN_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
-VISION_MODEL = os.getenv("VISION_MODEL", "moonshotai/kimi-k2.6")
-MEMORY_MODEL = os.getenv("MEMORY_MODEL", "moonshotai/kimi-k2.6")
+
+DEFAULT_MODEL = ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "nvidia/nemotron-3-ultra-550b-a55b"
+MAIN_MODEL = os.getenv("MAIN_MODEL", DEFAULT_MODEL)
+VISION_MODEL = os.getenv("VISION_MODEL", ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "moonshotai/kimi-k2.6")
+MEMORY_MODEL = os.getenv("MEMORY_MODEL", ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "moonshotai/kimi-k2.6")
 ENABLE_MEMORY_LLM = os.getenv("ENABLE_MEMORY_LLM", "true").lower() == "true"
 ENABLE_VISION_RECALL = os.getenv("ENABLE_VISION_RECALL", "true").lower() == "true"
 DECAY_HOURS = max(1, int(os.getenv("DECAY_INTERVAL_HOURS", "24")))
@@ -168,9 +180,20 @@ def public_memory(row: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def nvidia_chat(model: str, messages: list[dict[str, Any]], max_tokens: int = 1800, thinking: bool = False) -> str:
-    if not NVIDIA_API_KEY:
-        raise RuntimeError("NVIDIA_API_KEY is not configured")
+def active_api_key() -> str:
+    return OPENROUTER_API_KEY if MODEL_PROVIDER == "openrouter" else NVIDIA_API_KEY
+
+
+def model_chat(
+    model: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int = 1800,
+    thinking: bool = False,
+    json_mode: bool = False,
+) -> str:
+    api_key = active_api_key()
+    if not api_key:
+        raise RuntimeError(f"{MODEL_PROVIDER.upper()} API key is not configured")
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -179,19 +202,74 @@ def nvidia_chat(model: str, messages: list[dict[str, Any]], max_tokens: int = 18
         "max_tokens": max_tokens,
         "stream": False,
     }
-    if thinking and model.startswith("nvidia/nemotron"):
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    if MODEL_PROVIDER == "openrouter" and thinking and OPENROUTER_REASONING:
+        payload["reasoning"] = {"effort": "medium"}
+    elif thinking and model.startswith("nvidia/nemotron"):
         payload["chat_template_kwargs"] = {"enable_thinking": True}
         payload["reasoning_budget"] = min(4096, max_tokens * 2)
-    response = requests.post(
-        f"{NVIDIA_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {NVIDIA_API_KEY}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=180,
-    )
-    if not response.ok:
-        raise RuntimeError(f"NVIDIA API {response.status_code}: {response.text[:500]}")
-    message = response.json()["choices"][0]["message"]
-    return (message.get("content") or "").strip()
+
+    if MODEL_PROVIDER == "openrouter":
+        endpoint = f"{OPENROUTER_BASE_URL}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": OPENROUTER_HTTP_REFERER,
+            "X-Title": OPENROUTER_APP_TITLE,
+        }
+    else:
+        endpoint = f"{NVIDIA_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    attempts = 3 if MODEL_PROVIDER == "openrouter" and model == "openrouter/free" else 1
+    last_error = "The model returned no usable response."
+    for attempt in range(attempts):
+        attempt_payload = dict(payload)
+        # Relax optional reasoning after the first failure so the free router has
+        # a larger compatible pool to choose from.
+        if attempt:
+            attempt_payload.pop("reasoning", None)
+        try:
+            response = requests.post(endpoint, headers=headers, json=attempt_payload, timeout=180)
+        except requests.RequestException as error:
+            last_error = f"Connection error: {error}"
+            if attempt + 1 < attempts:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            raise RuntimeError(last_error) from error
+
+        if not response.ok:
+            try:
+                error_data = response.json().get("error", {})
+                error_message = str(error_data.get("message") or response.text)[:300]
+            except (ValueError, AttributeError):
+                error_message = response.text[:300]
+            last_error = f"{MODEL_PROVIDER.title()} API {response.status_code}: {error_message}"
+            if response.status_code in {408, 409, 429, 500, 502, 503, 504} and attempt + 1 < attempts:
+                time.sleep(0.65 * (attempt + 1))
+                continue
+            raise RuntimeError(last_error)
+
+        try:
+            data = response.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise ValueError("response contained no choices")
+            message = choices[0].get("message") or {}
+            content = message.get("content") or ""
+            if isinstance(content, list):
+                content = "".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content)
+            content = str(content).strip()
+            if content:
+                return content
+            last_error = "The routed model returned an empty final answer."
+        except (ValueError, TypeError, KeyError) as error:
+            last_error = f"Malformed router response: {error}"
+
+        if attempt + 1 < attempts:
+            time.sleep(0.5 * (attempt + 1))
+            continue
+    raise RuntimeError(last_error)
 
 
 STOPWORDS = {
@@ -230,7 +308,7 @@ def parse_json_object(text: str) -> dict[str, Any]:
 def label_memory(event_text: str) -> tuple[str, str, list[str]]:
     fallback_tags = keywords(event_text)
     fallback_summary = event_text[:3200]
-    if not (NVIDIA_API_KEY and ENABLE_MEMORY_LLM):
+    if not (active_api_key() and ENABLE_MEMORY_LLM):
         return safe_label(event_text), fallback_summary, fallback_tags
     prompt = (
         "Compress this completed agent event into durable memory metadata. Return only JSON with "
@@ -238,7 +316,7 @@ def label_memory(event_text: str) -> tuple[str, str, list[str]]:
         'and "tags" (3-8 short strings).\n\nEVENT:\n' + event_text[:12000]
     )
     try:
-        data = parse_json_object(nvidia_chat(MEMORY_MODEL, [{"role": "user", "content": prompt}], 600))
+        data = parse_json_object(model_chat(MEMORY_MODEL, [{"role": "user", "content": prompt}], 600, json_mode=True))
         label = str(data.get("label") or safe_label(event_text))[:80]
         summary = str(data.get("summary") or fallback_summary)[:3200]
         tags = [str(tag).lower()[:32] for tag in data.get("tags", fallback_tags)][:8]
@@ -397,7 +475,7 @@ def recall_from_images(memories: list[dict[str, Any]], query: str) -> str:
     if not memories:
         return "No relevant prior memory was found."
     fallback = "\n\n".join(f"[{m['label']}] {m['summary']}" for m in memories)
-    if not (NVIDIA_API_KEY and ENABLE_VISION_RECALL):
+    if not (active_api_key() and ENABLE_VISION_RECALL):
         return fallback
     content: list[dict[str, Any]] = [{
         "type": "text",
@@ -406,7 +484,7 @@ def recall_from_images(memories: list[dict[str, Any]], query: str) -> str:
     for memory in memories:
         content.append({"type": "image_url", "image_url": {"url": image_data_url(memory["image_url"])}})
     try:
-        return nvidia_chat(VISION_MODEL, [{"role": "user", "content": content}], 900)
+        return model_chat(VISION_MODEL, [{"role": "user", "content": content}], 900)
     except Exception:
         return fallback
 
@@ -441,14 +519,25 @@ def mock_plan(message: str) -> dict[str, Any]:
 
 
 def plan_response(message: str, memory_context: str, history: list[dict[str, Any]]) -> dict[str, Any]:
-    if not NVIDIA_API_KEY:
+    if not active_api_key():
         return mock_plan(message)
     context = f"RECALLED MEMORY (may be empty):\n{memory_context}\n\nCURRENT USER REQUEST:\n{message}"
     model_messages = [{"role": "system", "content": AGENT_SYSTEM}]
     model_messages.extend({"role": item["role"], "content": item["content"]} for item in history[-8:])
     model_messages.append({"role": "user", "content": context})
     try:
-        plan = parse_json_object(nvidia_chat(MAIN_MODEL, model_messages, 2200, thinking=True))
+        raw_plan = model_chat(MAIN_MODEL, model_messages, 2200, thinking=True, json_mode=True)
+        try:
+            plan = parse_json_object(raw_plan)
+        except (json.JSONDecodeError, ValueError):
+            direct_messages = [{
+                "role": "system",
+                "content": "You are Piper, a concise helpful assistant. Respond directly to the user. Do not use tools or JSON in this fallback response.",
+            }]
+            direct_messages.extend({"role": item["role"], "content": item["content"]} for item in history[-6:])
+            direct_messages.append({"role": "user", "content": message})
+            direct_reply = model_chat(MAIN_MODEL, direct_messages, 1200, thinking=False, json_mode=False)
+            return {"reply": direct_reply, "actions": [], "memory": {"summary": message}}
         plan.setdefault("reply", "Done.")
         plan.setdefault("actions", [])
         plan.setdefault("memory", {"summary": message})
@@ -518,7 +607,8 @@ def current_state() -> dict[str, Any]:
         "config": {
             "main_model": MAIN_MODEL,
             "vision_model": VISION_MODEL,
-            "demo_mode": not bool(NVIDIA_API_KEY),
+            "demo_mode": not bool(active_api_key()),
+            "provider": MODEL_PROVIDER,
             "decay_hours": DECAY_HOURS,
         },
     }
@@ -526,7 +616,7 @@ def current_state() -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "demo_mode": not bool(NVIDIA_API_KEY), "model": MAIN_MODEL}
+    return {"ok": True, "demo_mode": not bool(active_api_key()), "provider": MODEL_PROVIDER, "model": MAIN_MODEL}
 
 
 @app.get("/api/state")

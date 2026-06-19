@@ -67,10 +67,10 @@ function setConnection(online, error) {
   $('.mode-pill').classList.toggle('online', online);
   $('#connectionLabel').textContent = online ? (state.config.demo_mode ? 'Demo mode' : 'Agent online') : 'Backend offline';
   $('#modelLabel').textContent = online ? shortModel(state.config.main_model) : 'Start server.py';
-  $('#modePill').innerHTML = `<i></i> ${online ? (state.config.demo_mode ? 'local demo' : 'NVIDIA connected') : 'backend offline'}`;
+  $('#modePill').innerHTML = `<i></i> ${online ? (state.config.demo_mode ? 'local demo' : `${state.config.provider || 'model'} connected`) : 'backend offline'}`;
   $('#connectionTitle').textContent = online ? 'Backend connected' : 'Backend not connected';
   $('#connectionText').textContent = online
-    ? `${state.config.main_model}${state.config.demo_mode ? ' · add NVIDIA_API_KEY to .env for live inference.' : ' · visual memory recall enabled.'}`
+    ? `${state.config.main_model}${state.config.demo_mode ? ` · add ${(state.config.provider || 'model').toUpperCase()}_API_KEY to .env for live inference.` : ' · visual memory recall enabled.'}`
     : `Run the API from the project directory. ${error ? error.message : ''}`;
 }
 

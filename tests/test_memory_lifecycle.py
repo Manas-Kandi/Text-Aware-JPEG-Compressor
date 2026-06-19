@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import server
 
@@ -34,6 +35,17 @@ class MemoryLifecycleTest(unittest.TestCase):
         restored = next(item for item in server.current_state()["memories"] if item["id"] == memory_id)
         self.assertEqual(restored["decay_stage"], 0)
         self.assertGreaterEqual(restored["access_count"], 1)
+
+    def test_non_json_planner_falls_back_to_plain_chat(self):
+        original_key = server.OPENROUTER_API_KEY
+        server.OPENROUTER_API_KEY = "test-key"
+        try:
+            with patch.object(server, "model_chat", side_effect=["not json", "Hello — how can I help?"]):
+                result = server.plan_response("hi", "", [])
+            self.assertEqual(result["reply"], "Hello — how can I help?")
+            self.assertEqual(result["actions"], [])
+        finally:
+            server.OPENROUTER_API_KEY = original_key
 
 
 if __name__ == "__main__":
