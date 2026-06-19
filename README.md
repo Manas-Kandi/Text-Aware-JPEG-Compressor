@@ -1,31 +1,52 @@
-# Glyph
+# Piper — agentic visual memory MVP
 
-A dependency-free, text-aware JPEG compressor that runs entirely in the browser.
+Piper is a local-first chat and task agent backed by NVIDIA NIM models. Completed actions become compressed JPEG memory nodes in a SQLite relationship graph. Frequently retrieved memories are restored to full clarity; inactive memories decay through progressively lower resolution, contrast, and JPEG quality.
 
-## Run
+## What works
+
+- Chat and bounded agent actions: create/complete tasks, save notes, and create Markdown artifacts.
+- Nemotron executive model with optional reasoning.
+- Kimi multimodal memory cortex that reads retrieved JPEG nodes.
+- Automated memory labeling and summarization with a deterministic fallback.
+- SQLite memory graph with semantic and temporal edges.
+- Five-stage synaptic decay and retrieval-based reconsolidation.
+- Functional UI for conversation, tasks, graph inspection, manual decay, and memory recall.
+- Demo mode when no API key is configured.
+
+## Setup
 
 ```sh
-python3 -m http.server 4173
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Open `http://localhost:4173`.
+Add your NVIDIA API key to `.env`, then run:
 
-You can also open `index.html` directly. The app does not require a build step or web server.
+```sh
+uvicorn server:app --reload --port 8000
+```
 
-## Compression approach
+Open <http://127.0.0.1:8000>. You can also keep opening `index.html` directly; it will call the backend at `127.0.0.1:8000`.
 
-Glyph uses a small original algorithm designed for scans, screenshots, and photographed pages:
+## Model roles
 
-1. A Sobel-style edge scan estimates how much of the image contains probable text.
-2. **Ink Guard** selectively sharpens high-frequency character strokes.
-3. Flat, paper-like regions are gently color-quantized to remove JPEG-expensive scanner noise.
-4. The compressor encodes several candidates and measures edge-contrast retention after decoding each one.
-5. It chooses the smallest JPEG quality that passes the selected readability target.
+- `MAIN_MODEL`: executive conversation, planning, and action selection. Defaults to `nvidia/nemotron-3-ultra-550b-a55b`.
+- `VISION_MODEL`: reads retrieved memory images. Defaults to `moonshotai/kimi-k2.6`, which is multimodal.
+- `MEMORY_MODEL`: labels and distills completed work. It is separately configurable so it can be replaced with a smaller, cheaper NIM model.
 
-### Model context mode
+## Memory lifecycle
 
-The aggressive **Model context** preset is designed for synthetic chat screenshots rather than photos. It caps output at 750×1000, removes chroma, strongly quantizes flat backgrounds, reinforces glyph edges, and searches down to JPEG quality 16. The result screen estimates the likely visual-token range from the resolutions reported in *Text or Pixels? It Takes Half* (Li, Lan, and Zhou, 2025).
+1. A completed action is distilled into a label, summary, and tags.
+2. The summary is typeset into a 750×1000 grayscale JPEG.
+3. The node connects to recent semantically related nodes.
+4. Query keywords retrieve the most relevant activated nodes.
+5. Kimi reads their images and passes concise recalled context to Nemotron.
+6. Retrieval restores the node to stage 0. Every inactive decay interval advances it toward stage 4.
 
-JPEG byte size and LLM context cost are different objectives: the former affects storage and transport, while the latter is driven mainly by image resolution and the vision encoder's patch/token policy.
+Canonical text remains in SQLite so retrieval can reconsolidate a faded memory. This makes decay reversible and avoids compounding JPEG corruption beyond recovery.
 
-This is not OCR: no text content is extracted, and no file leaves the browser.
+## Safety boundary
+
+The MVP intentionally limits tools to local task, note, and Markdown artifact operations. It does not execute shell commands, send messages, or browse arbitrary URLs. Extend the action registry only with explicit validation and user confirmation for consequential operations.

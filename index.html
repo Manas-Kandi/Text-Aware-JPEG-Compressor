@@ -3,91 +3,111 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Text-aware JPEG compression that protects letter edges." />
-  <title>Glyph — text-safe image compression</title>
+  <meta name="description" content="Piper — an agent with a visual memory graph." />
+  <title>Piper — agentic memory</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="#" aria-label="Glyph home"><span class="brand-mark">G</span> Glyph</a>
-    <span class="local-pill"><i></i> 100% local</span>
-  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-orbit"><i></i></span><span>Piper<small>AGENTIC MEMORY</small></span></div>
+      <button class="new-thread" id="newThread"><span>＋</span> New thread <kbd>⌘K</kbd></button>
+      <nav class="primary-nav" aria-label="Workspace">
+        <button class="nav-item active" data-view="chat"><i>◌</i><span>Conversation</span></button>
+        <button class="nav-item" data-view="tasks"><i>✓</i><span>Tasks</span><b id="taskCount">0</b></button>
+        <button class="nav-item" data-view="memory"><i>⌘</i><span>Memory graph</span><b id="memoryCount">0</b></button>
+      </nav>
+      <div class="sidebar-section">
+        <span class="section-label">RECENT THREAD</span>
+        <button class="thread-item active"><span class="thread-dot"></span><span><b>Working session</b><small id="threadMeta">No messages yet</small></span></button>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="agent-status"><span class="status-pulse"></span><span><b id="connectionLabel">Connecting</b><small id="modelLabel">Local agent</small></span></div>
+        <button class="settings-button" id="settingsButton" aria-label="Connection details">•••</button>
+      </div>
+    </aside>
 
-  <main>
-    <section class="hero">
-      <p class="eyebrow">TEXT-AWARE JPEG COMPRESSION</p>
-      <h1>Smaller images.<br><em>Sharp words.</em></h1>
-      <p class="lede">Glyph finds letter edges, quiets scanner noise, and compresses everything else more aggressively—without sending your files anywhere.</p>
-    </section>
-
-    <section class="workspace" aria-label="JPEG compressor">
-      <label class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Choose or drop a JPEG" for="fileInput">
-        <input id="fileInput" type="file" accept="image/jpeg,.jpg,.jpeg" hidden />
-        <div class="drop-icon" aria-hidden="true"><span>↓</span></div>
-        <h2>Drop a JPEG here</h2>
-        <p>or click to choose a file</p>
-        <small>JPEG · up to 30 MB</small>
-      </label>
-
-      <div class="editor" id="editor" hidden>
-        <div class="preview-wrap">
-          <canvas id="previewCanvas" aria-label="Image preview"></canvas>
-          <div class="preview-badge" id="previewBadge">Original</div>
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="crumb"><span id="viewEyebrow">CONVERSATION</span><strong id="viewTitle">Working session</strong></div>
+        <div class="topbar-actions">
+          <span class="mode-pill" id="modePill"><i></i> checking backend</span>
+          <button class="icon-btn" id="toggleRail" aria-label="Toggle memory panel">◫</button>
         </div>
-        <aside class="controls">
-          <div class="file-row">
-            <div><strong id="fileName"></strong><span id="fileMeta"></span></div>
-            <button class="icon-button" id="removeButton" aria-label="Remove image">×</button>
+      </header>
+
+      <section class="view active" id="chatView">
+        <div class="chat-scroll" id="chatScroll">
+          <div class="welcome" id="welcome">
+            <div class="welcome-mark"><span></span><i></i><b></b></div>
+            <p class="eyebrow">AN AGENT THAT REMEMBERS</p>
+            <h1>What are we<br><em>building today?</em></h1>
+            <p class="welcome-copy">I can discuss ideas, create tasks and notes, write Markdown artifacts, and turn completed work into a visual memory graph that evolves with use.</p>
+            <div class="suggestions">
+              <button data-prompt="Create a task to design the onboarding flow, with a short acceptance checklist."><span>01</span><b>Plan a task</b><small>Create work and persist it</small></button>
+              <button data-prompt="Save a note describing our visual memory and synaptic decay architecture."><span>02</span><b>Remember an idea</b><small>Generate a memory node</small></button>
+              <button data-prompt="Create a Markdown project brief for this agentic memory MVP."><span>03</span><b>Produce an artifact</b><small>Write a local deliverable</small></button>
+            </div>
           </div>
-
-          <div class="analysis-card">
-            <span class="scan-icon">Aa</span>
-            <div><strong id="analysisTitle">Analyzing text…</strong><span id="analysisText">Mapping high-contrast edges</span></div>
-          </div>
-
-          <fieldset>
-            <legend>Compression intent</legend>
-            <label class="preset selected"><input type="radio" name="preset" value="model" checked><span><b>Model context</b><small>Smallest visual-token budget</small></span><i></i></label>
-            <label class="preset"><input type="radio" name="preset" value="crisp"><span><b>Crisp text</b><small>Highest readability</small></span><i></i></label>
-            <label class="preset"><input type="radio" name="preset" value="balanced"><span><b>Balanced</b><small>Best size-to-clarity ratio</small></span><i></i></label>
-            <label class="preset"><input type="radio" name="preset" value="compact"><span><b>Compact</b><small>Smaller, still legible</small></span><i></i></label>
-          </fieldset>
-
-          <label class="toggle-row"><span><b>Ink Guard</b><small>Strengthen faint character strokes</small></span><input id="inkGuard" type="checkbox" checked><i></i></label>
-
-          <button class="compress-button" id="compressButton"><span>Compress intelligently</span><i>→</i></button>
-          <p class="status" id="status" aria-live="polite"></p>
-        </aside>
-      </div>
-
-      <div class="result" id="result" hidden>
-        <div class="result-top"><span class="success-check">✓</span><div><h2>Ready to read. Lighter to keep.</h2><p id="resultSummary"></p></div></div>
-        <div class="metric-grid">
-          <div><span>BEFORE</span><strong id="beforeSize"></strong></div>
-          <div class="arrow">→</div>
-          <div><span>AFTER</span><strong id="afterSize"></strong></div>
-          <div class="saved"><span>SAVED</span><strong id="savedPercent"></strong></div>
+          <div class="message-list" id="messageList"></div>
         </div>
-        <div class="token-card" id="tokenCard"><span>ESTIMATED VISION BUDGET</span><strong id="tokenEstimate"></strong><small>Approximation based on the paper's reported 600×800 to 750×1000 results; actual tokenization depends on the target model.</small></div>
-        <div class="result-actions">
-          <button class="secondary-button" id="againButton">Compress another</button>
-          <button class="download-button" id="downloadButton" type="button"><span>Save JPEG</span><i>↓</i></button>
+        <div class="composer-wrap">
+          <div class="retrieval-strip" id="retrievalStrip" hidden><span>⌘</span><p><b id="retrievalCount">0 memories</b> available for retrieval</p></div>
+          <form class="composer" id="composer">
+            <textarea id="messageInput" rows="1" maxlength="16000" placeholder="Ask, plan, or delegate a task…"></textarea>
+            <div class="composer-footer">
+              <div><button type="button" class="tool-chip active"><i></i> Agent tools</button><span class="privacy">Local graph · remote inference</span></div>
+              <button class="send-button" id="sendButton" type="submit" aria-label="Send message">↑</button>
+            </div>
+          </form>
+          <p class="composer-hint">Piper can make mistakes. Review generated artifacts and task changes.</p>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="how-it-works">
-      <p class="eyebrow">THE IDEA</p>
-      <h2>Not every pixel deserves<br>the same budget.</h2>
-      <div class="steps">
-        <article><span>01</span><h3>Find the ink</h3><p>A lightweight edge map locates probable character strokes without OCR or cloud services.</p></article>
-        <article><span>02</span><h3>Quiet the paper</h3><p>Flat backgrounds are gently quantized, removing scanner noise that wastes JPEG bytes.</p></article>
-        <article><span>03</span><h3>Test readability</h3><p>Glyph tries several JPEG qualities and keeps the smallest one that retains enough edge contrast.</p></article>
-      </div>
-    </section>
-  </main>
+      <section class="view" id="tasksView">
+        <div class="section-head"><div><p class="eyebrow">EXECUTION LEDGER</p><h2>Tasks</h2><p>Work created by you or the agent. Completed tasks become memory nodes.</p></div><button class="solid-button" id="addTask">＋ Add task</button></div>
+        <div class="task-stats"><div><span>OPEN</span><strong id="openStat">0</strong></div><div><span>COMPLETED</span><strong id="doneStat">0</strong></div><div><span>MEMORIES FORMED</span><strong id="formedStat">0</strong></div></div>
+        <div class="task-list" id="taskList"></div>
+      </section>
 
-  <footer><span>Glyph / an experimental text-safe compressor</span><span>Files never leave your browser.</span></footer>
+      <section class="view" id="memoryView">
+        <div class="section-head memory-head"><div><p class="eyebrow">LONG-TERM CONTEXT</p><h2>Memory graph</h2><p>Retrieval reinforces a node. Inactivity progressively reduces resolution, contrast, and JPEG quality.</p></div><button class="outline-button" id="decayButton">Run decay cycle</button></div>
+        <div class="graph-card">
+          <div class="graph-toolbar"><span><i class="fresh-key"></i> Fresh</span><span><i class="faded-key"></i> Decayed</span><b id="graphMeta">0 nodes · 0 edges</b></div>
+          <svg id="memoryGraph" role="img" aria-label="Memory relationship graph"></svg>
+          <div class="empty-graph" id="emptyGraph"><span>⌘</span><b>No memories yet</b><small>Complete a task or save a note to form the first node.</small></div>
+        </div>
+        <div class="memory-grid" id="memoryGrid"></div>
+      </section>
+    </main>
+
+    <aside class="memory-rail" id="memoryRail">
+      <div class="rail-head"><div><span class="eyebrow">WORKING MEMORY</span><strong>Context cortex</strong></div><button class="icon-btn" id="closeRail">×</button></div>
+      <div class="cortex-visual"><div class="cortex-ring r1"></div><div class="cortex-ring r2"></div><span>⌘</span><i id="cortexCount">0</i></div>
+      <div class="rail-metric"><span>GRAPH HEALTH</span><strong id="graphHealth">—</strong><div class="health-track"><i id="healthBar"></i></div></div>
+      <div class="rail-section">
+        <div class="rail-section-title"><span>RECENT NODES</span><button data-view-jump="memory">View graph</button></div>
+        <div class="rail-memory-list" id="railMemories"><p class="rail-empty">Completed work will appear here as compressed visual context.</p></div>
+      </div>
+      <div class="decay-note"><span>⌁</span><div><b>Synaptic decay is active</b><p>Unused nodes lose fidelity every <span id="decayHours">24</span> hours. Retrieval restores full clarity.</p></div></div>
+    </aside>
+  </div>
+
+  <dialog id="taskDialog">
+    <form method="dialog" id="taskForm">
+      <div class="dialog-head"><span>NEW TASK</span><button value="cancel">×</button></div>
+      <label>Task title<input id="taskTitle" maxlength="200" required placeholder="What needs to be done?" /></label>
+      <label>Details<textarea id="taskDetails" rows="4" maxlength="4000" placeholder="Context, constraints, or acceptance criteria"></textarea></label>
+      <div class="dialog-actions"><button value="cancel" class="outline-button">Cancel</button><button value="default" class="solid-button" id="saveTask">Create task</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="connectionDialog">
+    <div class="dialog-head"><span>CONNECTION</span><button onclick="this.closest('dialog').close()">×</button></div>
+    <div class="connection-copy"><b id="connectionTitle">Backend not connected</b><p id="connectionText">Start the API server, then this page will connect automatically.</p><code>python3 server.py</code></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status"></div>
   <script defer src="app.js"></script>
 </body>
 </html>
