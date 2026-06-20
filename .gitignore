@@ -4,5 +4,6 @@ __pycache__/
 *.pyc
 data/agent.db
 data/memory_images/
+data/benchmark_images/
 data/artifacts/
 tmp/

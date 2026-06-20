@@ -11,6 +11,7 @@ import textwrap
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,9 +28,10 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 IMAGES = DATA / "memory_images"
+BENCHMARK_IMAGES = DATA / "benchmark_images"
 ARTIFACTS = DATA / "artifacts"
 DB_PATH = DATA / "agent.db"
-for directory in (DATA, IMAGES, ARTIFACTS):
+for directory in (DATA, IMAGES, BENCHMARK_IMAGES, ARTIFACTS):
     directory.mkdir(parents=True, exist_ok=True)
 
 
@@ -61,6 +63,7 @@ DEFAULT_MODEL = ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "nvidia/nemo
 MAIN_MODEL = os.getenv("MAIN_MODEL", DEFAULT_MODEL)
 VISION_MODEL = os.getenv("VISION_MODEL", ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "moonshotai/kimi-k2.6")
 MEMORY_MODEL = os.getenv("MEMORY_MODEL", ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "moonshotai/kimi-k2.6")
+BENCHMARK_MODEL = os.getenv("BENCHMARK_MODEL", VISION_MODEL)
 ENABLE_MEMORY_LLM = os.getenv("ENABLE_MEMORY_LLM", "true").lower() == "true"
 ENABLE_VISION_RECALL = os.getenv("ENABLE_VISION_RECALL", "true").lower() == "true"
 DECAY_HOURS = max(1, int(os.getenv("DECAY_INTERVAL_HOURS", "24")))
@@ -107,12 +110,26 @@ def init_db() -> None:
                   decay_stage INTEGER NOT NULL DEFAULT 0,
                   activation REAL NOT NULL DEFAULT 1.0
                 );
-                CREATE TABLE IF NOT EXISTS edges (
+            CREATE TABLE IF NOT EXISTS edges (
                   id TEXT PRIMARY KEY, source_id TEXT NOT NULL, target_id TEXT NOT NULL,
                   relation TEXT NOT NULL, weight REAL NOT NULL DEFAULT 0.5,
                   created_at TEXT NOT NULL,
                   FOREIGN KEY(source_id) REFERENCES memories(id) ON DELETE CASCADE,
                   FOREIGN KEY(target_id) REFERENCES memories(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_runs (
+                  id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL,
+                  scenarios INTEGER NOT NULL, depth INTEGER NOT NULL,
+                  summary TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_steps (
+                  id TEXT PRIMARY KEY, run_id TEXT NOT NULL, arm TEXT NOT NULL,
+                  scenario INTEGER NOT NULL, step INTEGER NOT NULL,
+                  prompt TEXT NOT NULL, expected TEXT NOT NULL, answer TEXT NOT NULL,
+                  correct INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
+                  input_tokens INTEGER NOT NULL, memory_bytes INTEGER NOT NULL,
+                  routed_model TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
+                  FOREIGN KEY(run_id) REFERENCES benchmark_runs(id) ON DELETE CASCADE
                 );
                 """
             )
@@ -142,6 +159,11 @@ class NoteRequest(BaseModel):
     content: str = Field(min_length=1, max_length=20000)
 
 
+class BenchmarkRequest(BaseModel):
+    scenarios: int = Field(default=2, ge=1, le=5)
+    depth: int = Field(default=6, ge=3, le=8)
+
+
 app = FastAPI(title="Piper Agent", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -151,6 +173,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/memory-images", StaticFiles(directory=IMAGES), name="memory-images")
+app.mount("/benchmark-images", StaticFiles(directory=BENCHMARK_IMAGES), name="benchmark-images")
 app.mount("/artifacts", StaticFiles(directory=ARTIFACTS), name="artifacts")
 
 
@@ -190,7 +213,8 @@ def model_chat(
     max_tokens: int = 1800,
     thinking: bool = False,
     json_mode: bool = False,
-) -> str:
+    with_metadata: bool = False,
+) -> Any:
     api_key = active_api_key()
     if not api_key:
         raise RuntimeError(f"{MODEL_PROVIDER.upper()} API key is not configured")
@@ -261,6 +285,13 @@ def model_chat(
                 content = "".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content)
             content = str(content).strip()
             if content:
+                if with_metadata:
+                    return {
+                        "content": content,
+                        "model": str(data.get("model") or model),
+                        "provider": str(data.get("provider") or MODEL_PROVIDER),
+                        "usage": data.get("usage") or {},
+                    }
                 return content
             last_error = "The routed model returned an empty final answer."
         except (ValueError, TypeError, KeyError) as error:
@@ -586,6 +617,168 @@ def execute_actions(actions: list[dict[str, Any]]) -> list[str]:
     return results
 
 
+def benchmark_scenario(index: int, depth: int) -> tuple[str, list[dict[str, Any]]]:
+    codes = ["Cedar", "Quartz", "Nimbus", "Lumen", "Atlas"]
+    leads = ["Mira", "Soren", "Anika", "Theo", "Priya"]
+    replacements = ["Ivo", "Nadia", "Elian", "Zara", "Omar"]
+    regions = ["Oslo", "Lima", "Kyoto", "Accra", "Riga"]
+    new_regions = ["Tallinn", "Quito", "Busan", "Dakar", "Bern"]
+    risks = ["cobalt", "willow", "ember", "tundra", "harbor"]
+    code, lead = codes[index], leads[index]
+    replacement, region = replacements[index], regions[index]
+    new_region, risk = new_regions[index], risks[index]
+    budget, week, reduction = 84 + index * 7, 37 + index, 9 + index
+    reduced, final_budget = budget - reduction, budget - reduction + 13
+    access_phrase = f"{risk}-{index + 7}"
+    initial = (
+        f"Project record: code name {code}; lead {lead}; budget {budget} units; "
+        f"launch week {week}; region {region}; access phrase {access_phrase}."
+    )
+    steps = [
+        {"prompt": "What is the project code name? Answer with only the value.", "expected": [code]},
+        {"prompt": f"The budget is reduced by {reduction} units. What is the new budget? Answer with only the number.", "expected": [str(reduced)]},
+        {"prompt": f"The project lead changes to {replacement}. Who is the lead now? Answer with only the name.", "expected": [replacement]},
+        {"prompt": f"Record risk keyword {risk}. What risk keyword was just recorded? Answer with only the keyword.", "expected": [risk]},
+        {"prompt": f"The operating region changes from {region} to {new_region}. What is the current region? Answer only the value.", "expected": [new_region]},
+        {"prompt": "Add 13 units to the current reduced budget. What is the budget now? Answer with only the number.", "expected": [str(final_budget)]},
+        {"prompt": "Return the current code name, lead, and budget in that order, separated by commas.", "expected": [code, replacement, str(final_budget)]},
+        {"prompt": "What was the original access phrase from the project record? Answer only the phrase.", "expected": [access_phrase]},
+    ]
+    return initial, steps[:depth]
+
+
+def benchmark_correct(answer: str, expected: list[str]) -> bool:
+    normalized_answer = re.sub(r"[^a-z0-9]+", " ", answer.lower()).strip()
+    padded = f" {normalized_answer} "
+    return all(f" {re.sub(r'[^a-z0-9]+', ' ', value.lower()).strip()} " in padded for value in expected)
+
+
+def render_benchmark_frame(run_id: str, scenario: int, step: int, memory: str) -> Path:
+    canvas = Image.new("L", (750, 1000), 252)
+    draw = ImageDraw.Draw(canvas)
+    heading, body, mono = font(27, True), font(16), font(13)
+    draw.rectangle((0, 0, 750, 92), fill=236)
+    draw.text((38, 25), "SEQUENTIAL WORKING MEMORY", font=heading, fill=24)
+    draw.text((40, 62), f"SCENARIO {scenario + 1}  /  STEP {step + 1}", font=mono, fill=105)
+    y = 122
+    for line in wrap_pixels(draw, memory, body, 674):
+        if y > 938:
+            draw.text((38, y), "…", font=body, fill=28)
+            break
+        draw.text((38, y), line, font=body, fill=28)
+        y += 23
+    path = BENCHMARK_IMAGES / f"{run_id}-{scenario}-{step}.jpg"
+    canvas.save(path, "JPEG", quality=18, optimize=True, progressive=True)
+    return path
+
+
+def run_benchmark_arm(run_id: str, arm: str, scenarios: int, depth: int) -> None:
+    for scenario_index in range(scenarios):
+        memory, task_steps = benchmark_scenario(scenario_index, depth)
+        for step_index, task in enumerate(task_steps):
+            image_path: Path | None = None
+            if arm == "visual":
+                image_path = render_benchmark_frame(run_id, scenario_index, step_index, memory)
+                image_url = "data:image/jpeg;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+                content: Any = [
+                    {"type": "text", "text": "Use the image as the complete working memory. " + task["prompt"]},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ]
+                memory_bytes = image_path.stat().st_size
+                estimated_tokens = round(750 * 1000 / 758) + len(task["prompt"]) // 4
+            else:
+                content = f"WORKING MEMORY\n{memory}\n\nTASK\n{task['prompt']}"
+                memory_bytes = len(memory.encode("utf-8"))
+                estimated_tokens = len(content) // 4
+
+            started = time.perf_counter()
+            answer, routed_model, input_tokens, error = "", BENCHMARK_MODEL, estimated_tokens, ""
+            try:
+                result = model_chat(
+                    BENCHMARK_MODEL,
+                    [{"role": "user", "content": content}],
+                    max_tokens=160,
+                    thinking=False,
+                    with_metadata=True,
+                )
+                answer = result["content"]
+                routed_model = result["model"]
+                usage = result.get("usage") or {}
+                input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or estimated_tokens)
+            except Exception as exc:
+                error = str(exc)[:500]
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            correct = bool(answer) and benchmark_correct(answer, task["expected"])
+            execute(
+                "INSERT INTO benchmark_steps VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    uuid.uuid4().hex, run_id, arm, scenario_index, step_index,
+                    task["prompt"], " | ".join(task["expected"]), answer,
+                    int(correct), latency_ms, input_tokens, memory_bytes, routed_model, error,
+                ),
+            )
+            memory += f"\nStep {step_index + 1} task: {task['prompt']}\nStep {step_index + 1} answer: {answer or '[no answer]'}"
+
+
+def summarize_benchmark(run_id: str) -> dict[str, Any]:
+    step_rows = rows("SELECT * FROM benchmark_steps WHERE run_id=? ORDER BY scenario, step, arm", (run_id,))
+    arms: dict[str, Any] = {}
+    for arm in ("visual", "text"):
+        arm_rows = [row for row in step_rows if row["arm"] == arm]
+        count = len(arm_rows)
+        arms[arm] = {
+            "steps": count,
+            "accuracy": round(sum(row["correct"] for row in arm_rows) / max(1, count) * 100, 1),
+            "avg_latency_ms": round(sum(row["latency_ms"] for row in arm_rows) / max(1, count)),
+            "total_input_tokens": sum(row["input_tokens"] for row in arm_rows),
+            "avg_memory_bytes": round(sum(row["memory_bytes"] for row in arm_rows) / max(1, count)),
+            "failures": sum(bool(row["error"]) for row in arm_rows),
+            "models": sorted({row["routed_model"] for row in arm_rows}),
+        }
+    text_tokens = max(1, arms["text"]["total_input_tokens"])
+    summary = {
+        "arms": arms,
+        "accuracy_delta": round(arms["visual"]["accuracy"] - arms["text"]["accuracy"], 1),
+        "visual_token_delta": round((arms["visual"]["total_input_tokens"] / text_tokens - 1) * 100, 1),
+        "mixed_models": len(set(arms["visual"]["models"] + arms["text"]["models"])) > 1,
+    }
+    return {"summary": summary, "steps": step_rows}
+
+
+def run_benchmark(scenarios: int, depth: int) -> dict[str, Any]:
+    if not active_api_key():
+        raise RuntimeError("Configure an API key before running a live benchmark.")
+    run_id = uuid.uuid4().hex
+    execute(
+        "INSERT INTO benchmark_runs VALUES (?,?,?,?,?,?)",
+        (run_id, now_iso(), "running", scenarios, depth, "{}"),
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="piper-benchmark") as executor:
+            visual = executor.submit(run_benchmark_arm, run_id, "visual", scenarios, depth)
+            text = executor.submit(run_benchmark_arm, run_id, "text", scenarios, depth)
+            visual.result()
+            text.result()
+        result = summarize_benchmark(run_id)
+        execute("UPDATE benchmark_runs SET status='complete', summary=? WHERE id=?", (json.dumps(result["summary"]), run_id))
+    except Exception as exc:
+        execute("UPDATE benchmark_runs SET status='failed', summary=? WHERE id=?", (json.dumps({"error": str(exc)}), run_id))
+        raise
+    run = rows("SELECT * FROM benchmark_runs WHERE id=?", (run_id,))[0]
+    run["summary"] = json.loads(run["summary"])
+    return {"run": run, **result}
+
+
+def latest_benchmark() -> dict[str, Any] | None:
+    found = rows("SELECT * FROM benchmark_runs ORDER BY created_at DESC LIMIT 1")
+    if not found:
+        return None
+    run = found[0]
+    run["summary"] = json.loads(run["summary"] or "{}")
+    result = summarize_benchmark(run["id"])
+    return {"run": run, **result}
+
+
 def insert_message(role: str, content: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
     item = {"id": uuid.uuid4().hex, "role": role, "content": content, "created_at": now_iso(), "meta": json.dumps(meta or {})}
     execute("INSERT INTO messages VALUES (?,?,?,?,?)", tuple(item.values()))
@@ -604,11 +797,13 @@ def current_state() -> dict[str, Any]:
         "notes": rows("SELECT * FROM notes ORDER BY created_at DESC LIMIT 30"),
         "memories": [public_memory(item) for item in rows("SELECT * FROM memories ORDER BY created_at DESC LIMIT 100")],
         "edges": rows("SELECT * FROM edges ORDER BY created_at DESC LIMIT 240"),
+        "latest_benchmark": latest_benchmark(),
         "config": {
             "main_model": MAIN_MODEL,
             "vision_model": VISION_MODEL,
             "demo_mode": not bool(active_api_key()),
             "provider": MODEL_PROVIDER,
+            "benchmark_model": BENCHMARK_MODEL,
             "decay_hours": DECAY_HOURS,
         },
     }
@@ -691,6 +886,36 @@ def access_memory(memory_id: str) -> dict[str, Any]:
 def decay() -> dict[str, Any]:
     changed = apply_decay(force=True)
     return {"changed": changed, "state": current_state()}
+
+
+@app.get("/api/benchmarks/latest")
+def get_latest_benchmark() -> dict[str, Any]:
+    result = latest_benchmark()
+    if not result:
+        raise HTTPException(404, "No benchmark has been run")
+    return result
+
+
+@app.post("/api/benchmarks")
+def create_benchmark(request: BenchmarkRequest) -> dict[str, Any]:
+    try:
+        return run_benchmark(request.scenarios, request.depth)
+    except RuntimeError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.get("/api/artifacts")
+def list_artifacts() -> dict[str, Any]:
+    files = []
+    for path in sorted(ARTIFACTS.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+        files.append({
+            "name": path.name,
+            "title": path.stem.replace("-", " ").title(),
+            "url": f"/artifacts/{path.name}",
+            "size": path.stat().st_size,
+            "modified": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+        })
+    return {"artifacts": files}
 
 
 @app.get("/")

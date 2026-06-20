@@ -12,8 +12,10 @@ class MemoryLifecycleTest(unittest.TestCase):
         server.DB_PATH = self.root / "test.db"
         server.IMAGES = self.root / "images"
         server.ARTIFACTS = self.root / "artifacts"
+        server.BENCHMARK_IMAGES = self.root / "benchmark-images"
         server.IMAGES.mkdir()
         server.ARTIFACTS.mkdir()
+        server.BENCHMARK_IMAGES.mkdir()
         server.init_db()
 
     def test_task_graph_decay_and_recall(self):
@@ -44,6 +46,25 @@ class MemoryLifecycleTest(unittest.TestCase):
                 result = server.plan_response("hi", "", [])
             self.assertEqual(result["reply"], "Hello — how can I help?")
             self.assertEqual(result["actions"], [])
+        finally:
+            server.OPENROUTER_API_KEY = original_key
+
+    def test_dual_stream_benchmark_runs_both_arms(self):
+        original_key = server.OPENROUTER_API_KEY
+        server.OPENROUTER_API_KEY = "test-key"
+        response = {
+            "content": "Cedar 75 Ivo cobalt Tallinn 88 amber-7",
+            "model": "test/multimodal",
+            "provider": "test",
+            "usage": {"prompt_tokens": 120},
+        }
+        try:
+            with patch.object(server, "model_chat", return_value=response):
+                result = server.run_benchmark(scenarios=1, depth=3)
+            self.assertEqual(result["run"]["status"], "complete")
+            self.assertEqual(len(result["steps"]), 6)
+            self.assertEqual(result["summary"]["arms"]["visual"]["accuracy"], 100.0)
+            self.assertEqual(result["summary"]["arms"]["text"]["accuracy"], 100.0)
         finally:
             server.OPENROUTER_API_KEY = original_key
 
