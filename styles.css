@@ -3,43 +3,45 @@
 :root {
   color-scheme: dark;
 
-  --bg: #0a0b0e;
-  --surface: #0f1115;
-  --panel: #141619;
-  --elevated: #1a1d23;
-  --hover: #20242b;
-  --code-bg: #0d0f12;
+  /* VSCode-darker minimalism — near-black surfaces, low chroma */
+  --bg: #060607;
+  --surface: #0a0a0c;
+  --panel: #0d0d10;
+  --elevated: #131316;
+  --hover: #1a1a1f;
+  --code-bg: #08080a;
 
-  --ink: #e8eaed;
-  --muted: #8b929d;
-  --dim: #5b626d;
-  --placeholder: #4a515c;
+  --ink: #d7d9dd;
+  --muted: #7c818b;
+  --dim: #50545d;
+  --placeholder: #41454e;
 
-  --line: #1e2128;
-  --line-strong: #2a2e36;
-  --line-subtle: #161819;
+  --line: #18181c;
+  --line-strong: #26262c;
+  --line-subtle: #111114;
 
-  --accent: #7ee787;
-  --accent-dim: #4a9e52;
-  --accent-glow: rgba(126, 231, 135, 0.15);
-  --accent-text: #0d1f12;
-  --blue: #6cc9ff;
-  --amber: #f2c97c;
-  --red: #f28b82;
-  --violet: #c4a8ff;
+  --accent: #4d9fff;
+  --accent-dim: #2c537f;
+  --accent-glow: rgba(77, 159, 255, 0.16);
+  --accent-text: #ffffff;
+  --blue: #4d9fff;
+  --amber: #e2b341;
+  --red: #f0726a;
+  --violet: #b388ff;
+  --green: #4ec99b;
 
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 16px;
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --glow: 0 0 16px var(--accent-glow);
-  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  --glow: 0 0 0 1px var(--accent-dim), 0 4px 16px var(--accent-glow);
+  --transition: 0.16s cubic-bezier(0.4, 0, 0.2, 1);
   --sidebar-w: 248px;
   --workspace-w: 380px;
 
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --mono: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
   --sans: Inter, -apple-system, system-ui, sans-serif;
 }
 
@@ -58,16 +60,18 @@
   --line: #e0ddd5;
   --line-strong: #ccc9c0;
   --line-subtle: #edebe5;
-  --accent: #3d6b30;
-  --accent-dim: #2d5223;
-  --accent-glow: rgba(61, 107, 48, 0.12);
+  --accent: #1f6feb;
+  --accent-dim: #8ab4e8;
+  --accent-glow: rgba(31, 111, 235, 0.12);
   --accent-text: #ffffff;
-  --blue: #2563eb;
+  --blue: #1f6feb;
   --amber: #b45309;
   --red: #dc2626;
   --violet: #7c3aed;
+  --green: #1a7f5a;
+  --glow: 0 0 0 1px var(--accent-dim), 0 4px 16px var(--accent-glow);
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
@@ -294,7 +298,7 @@ svg { flex: none; }
   line-height: 1.1;
   margin-bottom: 12px;
 }
-.chat-welcome h1 em { color: var(--accent); font-style: italic; font-family: Georgia, serif; font-weight: 400; }
+.chat-welcome h1 em { color: var(--accent); font-style: normal; font-weight: 600; }
 .welcome-sub { color: var(--muted); font-size: 14px; max-width: 480px; margin: 0 auto 32px; line-height: 1.6; }
 .welcome-suggestions { display: grid; gap: 10px; max-width: 480px; margin: 0 auto; }
 .suggestion-card {
@@ -339,7 +343,7 @@ svg { flex: none; }
   color: var(--muted);
   flex: none;
 }
-.message.assistant .message-avatar { background: var(--accent); color: var(--accent-text); border-color: var(--accent-dim); }
+.message.assistant .message-avatar { background: var(--elevated); color: var(--accent); border-color: var(--accent-dim); }
 .message-body { flex: 1; min-width: 0; }
 .message-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .message-head b { font-size: 12px; font-weight: 600; }
@@ -590,6 +594,31 @@ svg { flex: none; }
   color: var(--ink);
   background: var(--code-bg);
 }
+.file-viewer-content.viewer-error { color: var(--red); font-family: var(--sans); display: flex; align-items: center; justify-content: center; text-align: center; }
+
+/* Rendered markdown */
+.markdown-body { font-family: var(--sans); white-space: normal; font-size: 13.5px; line-height: 1.65; }
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-weight: 600; line-height: 1.3; margin: 1.4em 0 0.5em; color: var(--ink); }
+.markdown-body h1 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--line); }
+.markdown-body h2 { font-size: 1.25em; padding-bottom: 0.25em; border-bottom: 1px solid var(--line-subtle); }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body p { margin: 0.7em 0; }
+.markdown-body a { color: var(--accent); text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body strong { color: var(--ink); font-weight: 600; }
+.markdown-body em { color: var(--ink); }
+.markdown-body ul, .markdown-body ol { margin: 0.6em 0; padding-left: 1.4em; }
+.markdown-body li { margin: 0.25em 0; }
+.markdown-body code { font-family: var(--mono); font-size: 0.88em; background: var(--elevated); border: 1px solid var(--line); border-radius: 4px; padding: 0.12em 0.4em; }
+.markdown-body pre { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; overflow-x: auto; margin: 0.8em 0; }
+.markdown-body pre code { background: transparent; border: 0; padding: 0; font-size: 0.85em; }
+.markdown-body blockquote { margin: 0.8em 0; padding: 0.3em 0 0.3em 1em; border-left: 3px solid var(--accent-dim); color: var(--muted); }
+.markdown-body hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+
+/* Failed memory image placeholder */
+.memory-image-wrap img.img-failed { background: repeating-linear-gradient(45deg, var(--elevated), var(--elevated) 6px, var(--panel) 6px, var(--panel) 12px); opacity: 1 !important; }
 
 /* Tasks */
 .task-stats {
@@ -808,6 +837,7 @@ svg { flex: none; }
 
 /* Dialogs */
 dialog {
+  margin: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 0;
@@ -816,6 +846,8 @@ dialog {
   width: min(440px, calc(100vw - 32px));
   box-shadow: var(--shadow-lg);
 }
+dialog[open] { animation: dialogIn 0.18s cubic-bezier(0.4, 0, 0.2, 1); }
+@keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
 [data-theme="light"] dialog::backdrop { background: rgba(0, 0, 0, 0.3); }
 .dialog-head {

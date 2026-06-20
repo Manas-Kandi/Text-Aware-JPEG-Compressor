@@ -265,12 +265,12 @@
   <!-- TASK DIALOG -->
   <dialog id="taskDialog">
     <form method="dialog" id="taskForm">
-      <div class="dialog-head"><span>NEW TASK</span><button value="cancel" class="dialog-close" aria-label="Close">×</button></div>
+      <div class="dialog-head"><span>NEW TASK</span><button type="button" class="dialog-close" onclick="this.closest('dialog').close()" aria-label="Close">×</button></div>
       <div class="dialog-body">
-        <label class="dialog-field">Task title<input id="taskTitle" maxlength="200" required placeholder="What needs to be done?" /></label>
-        <label class="dialog-field">Details<textarea id="taskDetails" rows="4" maxlength="4000" placeholder="Context, constraints, or acceptance criteria"></textarea></label>
+        <label class="dialog-field" for="taskTitle">Task title<input id="taskTitle" maxlength="200" required placeholder="What needs to be done?" /></label>
+        <label class="dialog-field" for="taskDetails">Details<textarea id="taskDetails" rows="4" maxlength="4000" placeholder="Context, constraints, or acceptance criteria"></textarea></label>
       </div>
-      <div class="dialog-actions"><button value="cancel" class="ghost-btn">Cancel</button><button value="default" class="primary-btn" id="saveTask">Create task</button></div>
+      <div class="dialog-actions"><button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button><button type="submit" class="primary-btn" id="saveTask">Create task</button></div>
     </form>
   </dialog>
 

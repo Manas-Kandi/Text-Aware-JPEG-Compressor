@@ -40,11 +40,14 @@ function bindEvents() {
   $('#messageInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
-  $('#addTask').addEventListener('click', () => $('#taskDialog').showModal());
+  $('#addTask').addEventListener('click', () => { $('#taskForm').reset(); $('#taskDialog').showModal(); $('#taskTitle').focus(); });
   $('#taskForm').addEventListener('submit', createTask);
   $('#decayButton').addEventListener('click', runDecay);
   $('#runBenchmark').addEventListener('click', runBenchmark);
   $('#settingsButton').addEventListener('click', () => $('#connectionDialog').showModal());
+
+  // Dismiss dialogs by clicking the backdrop (native <dialog> only closes on Escape)
+  $$('dialog').forEach(dlg => dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); }));
 
   // Workspace tabs
   $$('.ws-tab').forEach(tab => tab.addEventListener('click', () => switchWsTab(tab.dataset.wsTab)));
@@ -239,7 +242,7 @@ async function createTask(e) {
   if (!title) return;
   try {
     const data = await api('/api/tasks', { method: 'POST', body: JSON.stringify({ title, details: $('#taskDetails').value.trim() }) });
-    state = data.state; $('#taskDialog').close(); e.target.reset(); renderAll(); toast('Task created and remembered');
+    state = data.state; e.target.reset(); $('#taskDialog').close(); renderAll(); toast('Task created and remembered');
   } catch (error) { toast(error.message); }
 }
 
@@ -274,16 +277,60 @@ function renderFiles() {
 
 async function openFile(url, name) {
   $$('.file-item').forEach(item => item.classList.toggle('active', item.dataset.url === url));
+  const content = $('#viewerContent');
   $('#fileViewer').hidden = false;
   $('#viewerTitle').textContent = name;
-  $('#viewerContent').textContent = 'Loading…';
+  content.className = 'file-viewer-content';
+  content.textContent = 'Loading…';
   try {
     const res = await fetch(assetUrl(url));
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const text = await res.text();
-    $('#viewerContent').textContent = text;
-  } catch {
-    $('#viewerContent').textContent = 'Failed to load file.';
+    if (/\.(md|markdown)$/i.test(name)) {
+      content.classList.add('markdown-body');
+      content.innerHTML = renderMarkdown(text);
+    } else {
+      content.textContent = text;
+    }
+  } catch (error) {
+    content.classList.add('viewer-error');
+    content.textContent = `Couldn't load this file — ${error.message}`;
   }
+}
+
+/* Minimal, dependency-free Markdown → HTML. Escapes first, then applies inline/block rules. */
+function renderMarkdown(src) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s) => esc(s)
+    .replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines = src.replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let inCode = false, codeBuf = [], listType = null, listBuf = [], para = [];
+  const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } };
+  const flushList = () => { if (listBuf.length) { out.push(`<${listType}>${listBuf.map(i => `<li>${inline(i)}</li>`).join('')}</${listType}>`); listBuf = []; listType = null; } };
+  for (const line of lines) {
+    const fence = line.match(/^```/);
+    if (fence) {
+      if (inCode) { out.push(`<pre><code>${esc(codeBuf.join('\n'))}</code></pre>`); codeBuf = []; inCode = false; }
+      else { flushPara(); flushList(); inCode = true; }
+      continue;
+    }
+    if (inCode) { codeBuf.push(line); continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { flushPara(); flushList(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
+    if (/^\s*([-*+])\s+/.test(line)) { flushPara(); if (listType && listType !== 'ul') flushList(); listType = 'ul'; listBuf.push(line.replace(/^\s*[-*+]\s+/, '')); continue; }
+    if (/^\s*\d+\.\s+/.test(line)) { flushPara(); if (listType && listType !== 'ol') flushList(); listType = 'ol'; listBuf.push(line.replace(/^\s*\d+\.\s+/, '')); continue; }
+    if (/^\s*>\s?/.test(line)) { flushPara(); flushList(); out.push(`<blockquote>${inline(line.replace(/^\s*>\s?/, ''))}</blockquote>`); continue; }
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { flushPara(); flushList(); out.push('<hr>'); continue; }
+    if (line.trim() === '') { flushPara(); flushList(); continue; }
+    para.push(line.trim());
+  }
+  if (inCode) out.push(`<pre><code>${esc(codeBuf.join('\n'))}</code></pre>`);
+  flushPara(); flushList();
+  return out.join('\n');
 }
 
 function closeViewer() {
@@ -300,7 +347,7 @@ function renderMemories() {
   const health = state.memories.length ? Math.round(state.memories.reduce((s, m) => s + (1 - m.decay_stage / 4), 0) / state.memories.length * 100) : 0;
   $('#graphHealth').textContent = state.memories.length ? `${health}%` : '—';
   $('#memoryGrid').innerHTML = state.memories.map(m => `<div class="memory-card" data-memory-id="${m.id}">
-    <div class="memory-image-wrap"><img src="${assetUrl(m.image_url)}?v=${m.decay_stage}-${m.access_count}" alt="" style="opacity:${1 - m.decay_stage * .1}"></div>
+    <div class="memory-image-wrap"><img src="${assetUrl(m.image_url)}?v=${m.decay_stage}-${m.access_count}" alt="${escapeHtml(m.label)}" loading="lazy" style="opacity:${1 - m.decay_stage * .1}" onerror="this.classList.add('img-failed');this.removeAttribute('src')"></div>
     <div class="memory-card-copy"><b>${escapeHtml(m.label)}</b><div class="memory-card-meta"><span>${m.access_count} recalls</span><span>stage ${m.decay_stage}/4</span></div></div>
   </div>`).join('');
   $$('.memory-card').forEach(card => card.addEventListener('click', () => accessMemory(card.dataset.memoryId)));
