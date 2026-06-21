@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import base64
 import json
+import logging
 import math
 import os
 import re
@@ -70,6 +71,7 @@ DECAY_HOURS = max(1, int(os.getenv("DECAY_INTERVAL_HOURS", "24")))
 MAX_RETRIEVED = max(1, min(6, int(os.getenv("MAX_RETRIEVED_MEMORIES", "3"))))
 
 DB_LOCK = threading.Lock()
+LOGGER = logging.getLogger("piper")
 
 
 def now_iso() -> str:
@@ -108,7 +110,8 @@ def init_db() -> None:
                   created_at TEXT NOT NULL, last_accessed TEXT NOT NULL,
                   access_count INTEGER NOT NULL DEFAULT 0,
                   decay_stage INTEGER NOT NULL DEFAULT 0,
-                  activation REAL NOT NULL DEFAULT 1.0
+                  activation REAL NOT NULL DEFAULT 1.0,
+                  retrieval_meta TEXT NOT NULL DEFAULT '{}'
                 );
             CREATE TABLE IF NOT EXISTS edges (
                   id TEXT PRIMARY KEY, source_id TEXT NOT NULL, target_id TEXT NOT NULL,
@@ -133,6 +136,16 @@ def init_db() -> None:
                 );
                 """
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
+            if "retrieval_meta" not in columns:
+                conn.execute("ALTER TABLE memories ADD COLUMN retrieval_meta TEXT NOT NULL DEFAULT '{}'")
+            conn.execute(
+                """CREATE VIRTUAL TABLE IF NOT EXISTS memory_search USING fts5(
+                memory_id UNINDEXED, label, summary, tags, entities, actions,
+                outcomes, procedures, task_type, tokenize='porter unicode61'
+                )"""
+            )
+            conn.commit()
         finally:
             conn.close()
 
@@ -199,6 +212,7 @@ def execute(query: str, params: tuple = ()) -> None:
 def public_memory(row: dict[str, Any]) -> dict[str, Any]:
     item = dict(row)
     item["tags"] = json.loads(item.get("tags") or "[]")
+    item["retrieval_meta"] = json.loads(item.get("retrieval_meta") or "{}")
     item["image_url"] = f"/memory-images/{item.pop('image_name')}"
     return item
 
@@ -325,6 +339,54 @@ def safe_label(text: str) -> str:
     return " ".join(word.title() for word in chosen) or "Agent Memory"
 
 
+def clean_list(values: Any, limit: int = 10, max_length: int = 60) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    result: list[str] = []
+    for value in values:
+        normalized = re.sub(r"\s+", " ", str(value)).strip().lower()[:max_length]
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result[:limit]
+
+
+def infer_task_type(text: str) -> str:
+    lowered = text.lower()
+    groups = {
+        "coding": ("code", "debug", "implement", "function", "repository", "api"),
+        "planning": ("plan", "roadmap", "design", "architecture", "strategy"),
+        "research": ("research", "compare", "benchmark", "analyze", "evaluate"),
+        "writing": ("write", "document", "brief", "report", "artifact"),
+        "task-management": ("task", "complete", "todo", "remind"),
+        "knowledge": ("note", "remember", "memory", "context"),
+    }
+    scores = {name: sum(term in lowered for term in terms) for name, terms in groups.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] else "general"
+
+
+def deterministic_retrieval_meta(text: str) -> dict[str, Any]:
+    entity_candidates = re.findall(r"\b(?:[A-Z][A-Za-z0-9_-]+(?:\s+[A-Z][A-Za-z0-9_-]+){0,2}|[A-Za-z0-9_.-]+\.(?:md|py|js|ts|json|jpg|pdf))\b", text)
+    entities = [item.lower() for item in entity_candidates if item.upper() not in {"REQUEST", "OUTCOME", "DURABLE SUMMARY", "TASK CREATED", "TASK COMPLETED", "NOTE SAVED"}]
+    outcome_block = text.split("OUTCOME", 1)[-1] if "OUTCOME" in text else text
+    outcome_lines = [line.strip() for line in outcome_block.splitlines() if line.strip()][:4]
+    action_terms = [word for word in keywords(text, 24) if word in {
+        "create", "created", "complete", "completed", "save", "saved", "write", "wrote",
+        "design", "designed", "implement", "implemented", "analyze", "analyzed", "review", "build", "built"
+    }]
+    procedures = [line.strip()[:180] for line in text.splitlines() if re.match(r"^(?:\d+[.)]|[-*]\s|step\s+\d+)", line.strip(), re.I)][:8]
+    search_terms = keywords(text, 18)
+    return {
+        "entities": clean_list(entities, 12),
+        "actions": clean_list(action_terms, 10),
+        "outcomes": clean_list(outcome_lines, 6, 180),
+        "procedures": clean_list(procedures, 8, 180),
+        "task_type": infer_task_type(text),
+        "temporal": clean_list(re.findall(r"\b(?:20\d{2}-\d{2}-\d{2}|today|tomorrow|yesterday|week\s+\d+)\b", text, re.I), 6),
+        "search_terms": search_terms,
+    }
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.I | re.S)
     try:
@@ -336,24 +398,37 @@ def parse_json_object(text: str) -> dict[str, Any]:
         raise
 
 
-def label_memory(event_text: str) -> tuple[str, str, list[str]]:
+def label_memory(event_text: str) -> tuple[str, str, list[str], dict[str, Any]]:
     fallback_tags = keywords(event_text)
     fallback_summary = event_text[:3200]
+    fallback_meta = deterministic_retrieval_meta(event_text)
     if not (active_api_key() and ENABLE_MEMORY_LLM):
-        return safe_label(event_text), fallback_summary, fallback_tags
+        return safe_label(event_text), fallback_summary, fallback_tags, fallback_meta
     prompt = (
-        "Compress this completed agent event into durable memory metadata. Return only JSON with "
-        'keys "label" (2-5 words), "summary" (max 900 characters, preserve concrete procedures and outcomes), '
-        'and "tags" (3-8 short strings).\n\nEVENT:\n' + event_text[:12000]
+        "Create retrieval metadata for this completed agent event. Return only JSON with: "
+        '"label" (2-5 discriminative words), "summary" (max 900 characters), "tags" (3-8 concepts), '
+        '"entities" (people, projects, files, systems, identifiers), "actions" (operations performed), '
+        '"outcomes" (concrete resulting states), "procedures" (reusable steps), "task_type" (one category), '
+        '"temporal" (dates or phases), and "search_terms" (8-15 likely future query terms and aliases). '
+        "Prefer specific nouns over generic words. Preserve exact identifiers.\n\nEVENT:\n" + event_text[:12000]
     )
     try:
         data = parse_json_object(model_chat(MEMORY_MODEL, [{"role": "user", "content": prompt}], 600, json_mode=True))
         label = str(data.get("label") or safe_label(event_text))[:80]
         summary = str(data.get("summary") or fallback_summary)[:3200]
         tags = [str(tag).lower()[:32] for tag in data.get("tags", fallback_tags)][:8]
-        return label, summary, tags
+        meta = {
+            "entities": clean_list(data.get("entities"), 12) or fallback_meta["entities"],
+            "actions": clean_list(data.get("actions"), 10) or fallback_meta["actions"],
+            "outcomes": clean_list(data.get("outcomes"), 6, 180) or fallback_meta["outcomes"],
+            "procedures": clean_list(data.get("procedures"), 8, 180) or fallback_meta["procedures"],
+            "task_type": str(data.get("task_type") or fallback_meta["task_type"]).lower()[:40],
+            "temporal": clean_list(data.get("temporal"), 6) or fallback_meta["temporal"],
+            "search_terms": clean_list(data.get("search_terms"), 15) or fallback_meta["search_terms"],
+        }
+        return label, summary, tags, meta
     except Exception:
-        return safe_label(event_text), fallback_summary, fallback_tags
+        return safe_label(event_text), fallback_summary, fallback_tags, fallback_meta
 
 
 DECAY_PROFILES = [
@@ -418,28 +493,65 @@ def render_memory_image(memory_id: str, label: str, summary: str, tags: list[str
             Image.Resampling.LANCZOS,
         )
     name = f"{memory_id}.jpg"
-    canvas.save(IMAGES / name, "JPEG", quality=profile["quality"], optimize=True, progressive=True)
+    exif = Image.Exif()
+    exif[270] = json.dumps({"memory_id": memory_id, "label": label, "tags": tags[:8]}, ensure_ascii=True)
+    canvas.save(IMAGES / name, "JPEG", quality=profile["quality"], optimize=True, progressive=True, exif=exif)
     return name
 
 
 def create_memory(event_text: str) -> dict[str, Any]:
-    label, summary, tags = label_memory(event_text)
+    label, summary, tags, retrieval_meta = label_memory(event_text)
     memory_id, timestamp = uuid.uuid4().hex, now_iso()
     image_name = render_memory_image(memory_id, label, summary, tags, 0)
     execute(
-        "INSERT INTO memories VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (memory_id, label, summary, json.dumps(tags), image_name, timestamp, timestamp, 0, 0, 1.0),
+        """INSERT INTO memories
+        (id,label,summary,tags,image_name,created_at,last_accessed,access_count,decay_stage,activation,retrieval_meta)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (memory_id, label, summary, json.dumps(tags), image_name, timestamp, timestamp, 0, 0, 1.0, json.dumps(retrieval_meta)),
     )
-    connect_memory(memory_id, summary + " " + " ".join(tags))
+    index_memory(memory_id, label, summary, tags, retrieval_meta)
+    connect_memory(memory_id, summary + " " + " ".join(tags + retrieval_meta.get("search_terms", [])))
     return public_memory(rows("SELECT * FROM memories WHERE id=?", (memory_id,))[0])
 
 
+def create_memory_safely(event_text: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Keep user-visible actions successful if the derived memory side effect fails."""
+    try:
+        return create_memory(event_text), None
+    except Exception as error:
+        LOGGER.exception("Memory formation failed after a successful action")
+        return None, f"The action succeeded, but its memory node could not be formed: {error}"
+
+
+def index_memory(memory_id: str, label: str, summary: str, tags: list[str], meta: dict[str, Any]) -> None:
+    fields = (
+        memory_id, label, summary, " ".join(tags),
+        " ".join(meta.get("entities", [])), " ".join(meta.get("actions", [])),
+        " ".join(meta.get("outcomes", [])), " ".join(meta.get("procedures", [])),
+        str(meta.get("task_type", "general")),
+    )
+    execute("DELETE FROM memory_search WHERE memory_id=?", (memory_id,))
+    execute("INSERT INTO memory_search VALUES (?,?,?,?,?,?,?,?,?)", fields)
+
+
+def ensure_memory_index() -> None:
+    indexed = {row["memory_id"] for row in rows("SELECT memory_id FROM memory_search")}
+    for item in rows("SELECT * FROM memories"):
+        if item["id"] in indexed:
+            continue
+        tags = json.loads(item["tags"] or "[]")
+        meta = json.loads(item.get("retrieval_meta") or "{}") or deterministic_retrieval_meta(item["summary"])
+        if not item.get("retrieval_meta") or item["retrieval_meta"] == "{}":
+            execute("UPDATE memories SET retrieval_meta=? WHERE id=?", (json.dumps(meta), item["id"]))
+        index_memory(item["id"], item["label"], item["summary"], tags, meta)
+
+
 def connect_memory(memory_id: str, text: str) -> None:
-    candidates = rows("SELECT id, summary, tags FROM memories WHERE id != ? ORDER BY created_at DESC LIMIT 18", (memory_id,))
+    candidates = rows("SELECT id, summary, tags, retrieval_meta FROM memories WHERE id != ? ORDER BY created_at DESC LIMIT 18", (memory_id,))
     source_words = set(keywords(text, 20))
     connected = 0
     for candidate in candidates:
-        target_words = set(keywords(candidate["summary"] + " " + candidate["tags"], 20))
+        target_words = set(keywords(candidate["summary"] + " " + candidate["tags"] + " " + candidate["retrieval_meta"], 30))
         overlap = len(source_words & target_words) / max(1, len(source_words | target_words))
         if overlap >= 0.08 or (connected == 0 and len(candidates) > 0):
             execute(
@@ -452,15 +564,32 @@ def connect_memory(memory_id: str, text: str) -> None:
 
 
 def retrieve_memories(query: str) -> list[dict[str, Any]]:
-    query_words = set(keywords(query, 20))
-    candidates = rows("SELECT * FROM memories ORDER BY last_accessed DESC LIMIT 80")
+    ensure_memory_index()
+    query_terms = keywords(query, 16)
+    if not query_terms:
+        return [public_memory(item) for item in rows("SELECT * FROM memories ORDER BY activation DESC, last_accessed DESC LIMIT ?", (MAX_RETRIEVED,))]
+    match_query = " OR ".join(f'"{term}"*' for term in query_terms)
+    try:
+        candidates = rows(
+            """SELECT m.*, bm25(memory_search,0.0,6.0,1.0,3.0,6.0,3.5,4.5,3.5,2.5) AS search_rank
+            FROM memory_search JOIN memories m ON m.id=memory_search.memory_id
+            WHERE memory_search MATCH ? ORDER BY search_rank LIMIT 24""",
+            (match_query,),
+        )
+    except sqlite3.OperationalError:
+        candidates = []
+    if not candidates:
+        candidates = rows("SELECT *, 0 AS search_rank FROM memories ORDER BY activation DESC, last_accessed DESC LIMIT 24")
+    query_set = set(query_terms)
     scored: list[tuple[float, dict[str, Any]]] = []
-    for candidate in candidates:
-        words = set(keywords(candidate["label"] + " " + candidate["summary"] + " " + candidate["tags"], 30))
-        lexical = len(query_words & words) / max(1, len(query_words))
-        score = lexical * 4 + float(candidate["activation"]) * 0.35 + math.log1p(candidate["access_count"]) * 0.08
-        if lexical > 0 or len(candidates) <= MAX_RETRIEVED:
-            scored.append((score, candidate))
+    for position, candidate in enumerate(candidates):
+        meta = json.loads(candidate.get("retrieval_meta") or "{}")
+        entity_terms = set(keywords(" ".join(meta.get("entities", [])), 30))
+        outcome_terms = set(keywords(" ".join(meta.get("outcomes", [])), 30))
+        exact_boost = len(query_set & entity_terms) * 1.2 + len(query_set & outcome_terms) * 0.8
+        rank_score = 1.0 / (position + 1)
+        score = rank_score * 4 + exact_boost + float(candidate["activation"]) * 0.3 + math.log1p(candidate["access_count"]) * 0.06
+        scored.append((score, candidate))
     return [public_memory(item) for _, item in sorted(scored, key=lambda pair: pair[0], reverse=True)[:MAX_RETRIEVED]]
 
 
@@ -837,20 +966,21 @@ def chat(request: ChatRequest) -> dict[str, Any]:
         reply += "\n\n" + "\n".join(f"✓ {result}" for result in action_results)
     assistant = insert_message("assistant", reply, {"retrieved": [m["id"] for m in retrieved], "actions": action_results})
     new_memory = None
+    memory_warning = None
     if action_results:
         memory_meta = plan.get("memory") if isinstance(plan.get("memory"), dict) else {}
         memory_summary = str(memory_meta.get("summary") or request.message)
         event = f"REQUEST\n{request.message}\n\nOUTCOME\n{reply}\n\nDURABLE SUMMARY\n{memory_summary}"
-        new_memory = create_memory(event)
-    return {"message": assistant, "retrieved": [m["id"] for m in retrieved], "memory": new_memory, "state": current_state()}
+        new_memory, memory_warning = create_memory_safely(event)
+    return {"message": assistant, "retrieved": [m["id"] for m in retrieved], "memory": new_memory, "warning": memory_warning, "state": current_state()}
 
 
 @app.post("/api/tasks")
 def create_task(request: TaskRequest) -> dict[str, Any]:
     task_id, timestamp = uuid.uuid4().hex, now_iso()
     execute("INSERT INTO tasks VALUES (?,?,?,?,?,?)", (task_id, request.title, request.details, "open", timestamp, timestamp))
-    memory = create_memory(f"TASK CREATED\n{request.title}\n\nDETAILS\n{request.details or 'No details supplied.'}")
-    return {"task": rows("SELECT * FROM tasks WHERE id=?", (task_id,))[0], "memory": memory, "state": current_state()}
+    memory, warning = create_memory_safely(f"TASK CREATED\n{request.title}\n\nDETAILS\n{request.details or 'No details supplied.'}")
+    return {"task": rows("SELECT * FROM tasks WHERE id=?", (task_id,))[0], "memory": memory, "warning": warning, "state": current_state()}
 
 
 @app.patch("/api/tasks/{task_id}")
@@ -862,16 +992,18 @@ def patch_task(task_id: str, request: TaskPatch) -> dict[str, Any]:
     title = (request.title or found[0]["title"])[:200]
     execute("UPDATE tasks SET status=?, title=?, updated_at=? WHERE id=?", (status, title, now_iso(), task_id))
     if status == "done" and found[0]["status"] != "done":
-        create_memory(f"TASK COMPLETED\n{title}\n\nDETAILS\n{found[0]['details']}")
-    return {"state": current_state()}
+        _, warning = create_memory_safely(f"TASK COMPLETED\n{title}\n\nDETAILS\n{found[0]['details']}")
+    else:
+        warning = None
+    return {"warning": warning, "state": current_state()}
 
 
 @app.post("/api/notes")
 def create_note(request: NoteRequest) -> dict[str, Any]:
     note_id = uuid.uuid4().hex
     execute("INSERT INTO notes VALUES (?,?,?,?)", (note_id, request.title, request.content, now_iso()))
-    memory = create_memory(f"NOTE SAVED\n{request.title}\n\n{request.content}")
-    return {"memory": memory, "state": current_state()}
+    memory, warning = create_memory_safely(f"NOTE SAVED\n{request.title}\n\n{request.content}")
+    return {"memory": memory, "warning": warning, "state": current_state()}
 
 
 @app.post("/api/memories/{memory_id}/access")

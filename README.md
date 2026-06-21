@@ -9,7 +9,8 @@ Piper is a local-first chat and task agent using OpenRouter's capability-aware f
 - Automated memory labeling and summarization with a deterministic fallback.
 - SQLite memory graph with semantic and temporal edges.
 - Five-stage synaptic decay and retrieval-based reconsolidation.
-- Functional UI for conversation, tasks, graph inspection, manual decay, and memory recall.
+- IDE-style workbench with an explorer, task and graph sidebars, editor previews, output console, benchmark dashboard, and a Copilot-style agent panel.
+- Fault-isolated task actions: a memory-image/indexing failure is surfaced as a warning without rolling back the task.
 - Demo mode when no API key is configured.
 
 ## Setup

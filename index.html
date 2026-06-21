@@ -1,290 +1,89 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Piper — an autonomous agent with visual memory." />
-  <title>Piper — Agentic Workspace</title>
-  <script>
-    (function() {
-      const key = 'piper-theme';
-      const stored = localStorage.getItem(key);
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', stored ? stored : (prefersDark ? 'dark' : 'light'));
-    })();
-  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Piper agentic memory IDE" />
+  <title>Piper Workbench</title>
+  <script>document.documentElement.dataset.theme=localStorage.getItem('piper-theme')||'dark'</script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell" id="appShell">
-    <!-- LEFT SIDEBAR -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="brand">
-          <div class="brand-mark"><span></span><i></i></div>
-          <div class="brand-text"><b>Piper</b><small>Agentic Memory</small></div>
-        </div>
-        <button class="icon-btn sidebar-collapse" id="collapseSidebar" aria-label="Collapse sidebar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-        </button>
-      </div>
-      <button class="new-chat-btn" id="newThread">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        <span>New Task</span>
-      </button>
-      <div class="sidebar-section">
-        <div class="section-label">SESSIONS</div>
-        <div class="thread-list" id="threadList">
-          <button class="thread-item active">
-            <div class="thread-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-            <div class="thread-info"><b>Working session</b><small id="threadMeta">No messages yet</small></div>
-          </button>
-        </div>
-      </div>
-      <div class="sidebar-footer">
-        <div class="agent-status" id="agentStatus">
-          <span class="status-dot"></span>
-          <div class="agent-status-info"><b id="connectionLabel">Connecting</b><small id="modelLabel">Local agent</small></div>
-        </div>
-        <button class="icon-btn" id="settingsButton" aria-label="Connection settings">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-      </div>
-    </aside>
+  <div class="ide">
+    <header class="titlebar">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="title-command"><span>⌕</span><b>piedpiper</b><small>Agentic memory workbench</small></div>
+      <div class="title-actions"><span class="connection" id="modePill"><i></i><b id="modeText">connecting</b></span><button id="focusChat">Ask Piper</button></div>
+    </header>
 
-    <!-- CENTER CHAT PANEL -->
-    <main class="chat-panel">
-      <header class="chat-header">
-        <button class="icon-btn mobile-menu" id="mobileMenuBtn" aria-label="Menu">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        </button>
-        <div class="chat-header-info">
-          <div class="chat-header-title" id="chatTitle">Working session</div>
-          <div class="chat-header-sub" id="modePill"><span class="status-dot mini"></span> <span id="modeText">checking backend</span></div>
+    <div class="ide-main">
+      <nav class="activitybar" aria-label="Primary workspace">
+        <div class="activity-top">
+          <button class="activity active" data-panel="explorer" title="Explorer">▱</button>
+          <button class="activity" data-panel="tasks" title="Tasks">✓<b id="tasksBadge" hidden>0</b></button>
+          <button class="activity" data-panel="memory" title="Memory">◎<b id="memoryBadge" hidden>0</b></button>
+          <button class="activity" data-panel="benchmark" title="Benchmark">≋<b id="benchmarkBadge" hidden>0</b></button>
         </div>
-        <div class="chat-header-actions">
-          <button class="icon-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">
-            <svg class="sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-            <svg class="moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          </button>
-          <button class="icon-btn workspace-toggle" id="toggleWorkspace" aria-label="Toggle workspace">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
-          </button>
-        </div>
-      </header>
+        <div class="activity-bottom"><button id="themeToggle" title="Theme">◐</button><button id="settingsButton" title="Connection">⚙</button></div>
+      </nav>
 
-      <div class="chat-body" id="chatScroll">
-        <div class="chat-welcome" id="welcome">
-          <div class="welcome-logo"><div class="brand-mark large"><span></span><i></i></div></div>
-          <h1>What should we <em>build</em> today?</h1>
-          <p class="welcome-sub">I can plan tasks, write artifacts, manage notes, and remember everything as a visual memory graph.</p>
-          <div class="welcome-suggestions">
-            <button class="suggestion-card" data-prompt="Create a task to design the onboarding flow, with a short acceptance checklist.">
-              <div class="suggestion-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-              </div>
-              <div><b>Plan a task</b><small>Create work and persist it to memory</small></div>
-            </button>
-            <button class="suggestion-card" data-prompt="Save a note describing our visual memory and synaptic decay architecture.">
-              <div class="suggestion-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-              </div>
-              <div><b>Save a note</b><small>Generate a memory node from an idea</small></div>
-            </button>
-            <button class="suggestion-card" data-prompt="Create a Markdown project brief for this agentic memory MVP.">
-              <div class="suggestion-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
-              </div>
-              <div><b>Write an artifact</b><small>Produce a Markdown deliverable</small></div>
-            </button>
-          </div>
-        </div>
-        <div class="message-list" id="messageList"></div>
-      </div>
+      <aside class="sidebar">
+        <section class="side-panel active" id="panelExplorer">
+          <div class="side-title"><span>EXPLORER</span><button id="refreshFiles" title="Refresh">↻</button></div>
+          <div class="project-root"><span>⌄</span><b>PIEDPIPER</b></div>
+          <div class="file-tree" id="fileTree"></div>
+          <div class="outline"><div class="outline-head">OUTLINE</div><p id="outlineText">Select a file to inspect its structure.</p></div>
+        </section>
 
-      <div class="composer-area">
-        <div class="retrieval-bar" id="retrievalStrip" hidden>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>
-          <span><b id="retrievalCount">0 memories</b> available for retrieval</span>
-        </div>
-        <form class="composer" id="composer">
-          <div class="composer-input-row">
-            <textarea id="messageInput" rows="1" maxlength="16000" placeholder="Describe a task, ask a question, or delegate work…"></textarea>
-            <button class="send-btn" id="sendButton" type="submit" aria-label="Send" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-            </button>
-          </div>
-          <div class="composer-toolbar">
-            <div class="composer-tools">
-              <span class="tool-badge">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                Agent tools active
-              </span>
-              <span class="privacy-note">Local graph · remote inference</span>
-            </div>
-          </div>
-        </form>
-        <p class="composer-hint">Piper can make mistakes. Review generated artifacts and task changes.</p>
-      </div>
-    </main>
-
-    <!-- RIGHT WORKSPACE PANEL -->
-    <aside class="workspace" id="workspace">
-      <div class="workspace-header">
-        <div class="workspace-tabs">
-          <button class="ws-tab active" data-ws-tab="files">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-            <span>Files</span>
-            <b class="tab-badge" id="filesBadge" hidden>0</b>
-          </button>
-          <button class="ws-tab" data-ws-tab="tasks">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            <span>Tasks</span>
-            <b class="tab-badge" id="tasksBadge" hidden>0</b>
-          </button>
-          <button class="ws-tab" data-ws-tab="memory">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
-            <span>Memory</span>
-            <b class="tab-badge" id="memoryBadge" hidden>0</b>
-          </button>
-          <button class="ws-tab" data-ws-tab="benchmark">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V9M10 19V5M16 19v-7M22 19V2"/></svg>
-            <span>Bench</span>
-            <b class="tab-badge" id="benchmarkBadge" hidden>0</b>
-          </button>
-        </div>
-        <button class="icon-btn ws-close" id="closeWorkspace" aria-label="Close workspace">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <div class="workspace-body">
-        <!-- FILES TAB -->
-        <div class="ws-panel active" id="wsFiles">
-          <div class="ws-panel-header">
-            <b>Artifacts</b>
-            <span class="ws-count" id="filesCount">0 files</span>
-          </div>
-          <div class="file-list" id="fileList">
-            <div class="ws-empty">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-              <b>No artifacts yet</b>
-              <small>Ask Piper to write a document or brief</small>
-            </div>
-          </div>
-          <div class="file-viewer" id="fileViewer" hidden>
-            <div class="file-viewer-header">
-              <div class="file-viewer-title" id="viewerTitle">artifact.md</div>
-              <div class="file-viewer-actions">
-                <button class="icon-btn sm" id="closeViewer" aria-label="Close file">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-              </div>
-            </div>
-            <div class="file-viewer-content" id="viewerContent"></div>
-          </div>
-        </div>
-
-        <!-- TASKS TAB -->
-        <div class="ws-panel" id="wsTasks">
-          <div class="ws-panel-header">
-            <b>Tasks</b>
-            <button class="ghost-btn sm" id="addTask">+ Add</button>
-          </div>
-          <div class="task-stats">
-            <div class="stat-item"><span>OPEN</span><strong id="openStat">0</strong></div>
-            <div class="stat-item"><span>DONE</span><strong id="doneStat">0</strong></div>
-            <div class="stat-item"><span>MEMORIES</span><strong id="formedStat">0</strong></div>
-          </div>
+        <section class="side-panel" id="panelTasks">
+          <div class="side-title"><span>TASKS</span><button id="addTask" title="New task">＋</button></div>
+          <div class="side-summary"><span><b id="openStat">0</b> open</span><span><b id="doneStat">0</b> done</span></div>
           <div class="task-list" id="taskList"></div>
-        </div>
+        </section>
 
-        <!-- MEMORY TAB -->
-        <div class="ws-panel" id="wsMemory">
-          <div class="ws-panel-header">
-            <b>Memory Graph</b>
-            <button class="ghost-btn sm" id="decayButton">Decay</button>
-          </div>
-          <div class="memory-stats">
-            <div class="mem-stat">
-              <div class="mem-stat-ring"><span id="cortexCount">0</span></div>
-              <small>Nodes</small>
-            </div>
-            <div class="mem-stat">
-              <div class="mem-stat-value" id="graphHealth">—</div>
-              <small>Health</small>
-            </div>
-            <div class="mem-stat">
-              <div class="mem-stat-value" id="graphMeta">0</div>
-              <small>Edges</small>
-            </div>
-          </div>
-          <div class="graph-container">
-            <svg id="memoryGraph" role="img" aria-label="Memory relationship graph"></svg>
-            <div class="graph-empty" id="emptyGraph">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
-              <b>No memories yet</b>
-              <small>Complete a task or save a note</small>
-            </div>
-          </div>
-          <div class="memory-list-header">MEMORY NODES</div>
-          <div class="memory-grid" id="memoryGrid"></div>
-          <div class="decay-info">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            <span>Unused nodes decay every <b id="decayHours">24</b>h. Retrieval restores clarity.</span>
-          </div>
-        </div>
+        <section class="side-panel" id="panelMemory">
+          <div class="side-title"><span>MEMORY GRAPH</span><button id="decayButton" title="Run decay">⌁</button></div>
+          <div class="memory-health"><div><b id="cortexCount">0</b><span>nodes</span></div><div><b id="graphHealth">—</b><span>health</span></div><div><b id="graphMeta">0</b><span>edges</span></div></div>
+          <div class="mini-graph"><svg id="memoryGraph" aria-label="Memory graph"></svg><p id="emptyGraph">No memory nodes yet.</p></div>
+          <div class="memory-list" id="memoryGrid"></div>
+        </section>
 
-        <!-- BENCHMARK TAB -->
-        <div class="ws-panel" id="wsBenchmark">
-          <div class="ws-panel-header">
-            <b>Dual-stream benchmark</b>
-            <button class="primary-btn sm" id="runBenchmark">Run</button>
-          </div>
-          <p class="benchmark-intro">Identical sequential tasks run in parallel. One stream recalls compressed images; the other receives text memory.</p>
-          <div class="benchmark-config">
-            <label>SCENARIOS<select id="benchmarkScenarios"><option value="1">1 quick</option><option value="2" selected>2 standard</option><option value="3">3 robust</option></select></label>
-            <label>CHAIN<select id="benchmarkDepth"><option value="4">4 steps</option><option value="6" selected>6 steps</option><option value="8">8 steps</option></select></label>
-          </div>
-          <div class="benchmark-route"><span>ROUTE</span><b id="benchmarkModel">openrouter/free</b><small id="benchmarkRouteNote">Underlying models are recorded because the free router may vary them.</small></div>
-          <div class="benchmark-empty" id="benchmarkEmpty"><span>≋</span><b>No results yet</b><small>Run a benchmark to compare reliability, context cost, latency, and storage.</small></div>
-          <div class="benchmark-results" id="benchmarkResults" hidden>
-            <div class="benchmark-kpis" id="benchmarkKpis"></div>
-            <div class="mini-chart-card"><div class="mini-chart-head"><b>Accuracy</b><small>higher is better</small></div><div class="bar-chart" id="accuracyChart"></div></div>
-            <div class="mini-chart-card"><div class="mini-chart-head"><b>Average latency</b><small>lower is better</small></div><div class="bar-chart" id="latencyChart"></div></div>
-            <div class="mini-chart-card"><div class="mini-chart-head"><b>Context tokens</b><small>total reported</small></div><div class="bar-chart" id="tokenChart"></div></div>
-            <div class="mini-chart-card"><div class="mini-chart-head"><b>Stored memory</b><small>average bytes</small></div><div class="bar-chart" id="storageChart"></div></div>
-            <div class="mini-chart-card"><div class="mini-chart-head"><b>Sequential reliability</b><small>correctness by step</small></div><svg class="step-chart" id="stepChart" aria-label="Correctness by sequential step"></svg></div>
-            <div class="benchmark-ledger"><div class="mini-chart-head"><b>Failure ledger</b><small id="benchmarkRunMeta"></small></div><div id="benchmarkTable"></div></div>
-          </div>
-        </div>
-      </div>
-    </aside>
+        <section class="side-panel" id="panelBenchmark">
+          <div class="side-title"><span>DUAL STREAM</span><button id="runBenchmark">▶</button></div>
+          <p class="side-copy">Compare sequential image-memory and text-memory agents in parallel.</p>
+          <div class="bench-controls"><label>Scenarios<select id="benchmarkScenarios"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label><label>Depth<select id="benchmarkDepth"><option value="4">4</option><option value="6" selected>6</option><option value="8">8</option></select></label></div>
+          <div class="bench-side-result" id="benchmarkSideResult"><p>No completed run.</p></div>
+        </section>
+      </aside>
+
+      <main class="workbench">
+        <div class="editor-tabs"><button class="editor-tab active"><span id="tabIcon">◇</span><b id="tabName">overview.md</b><i>×</i></button><div class="editor-actions"><button id="splitEditor">◫</button><button id="moreEditor">•••</button></div></div>
+        <div class="breadcrumbs" id="breadcrumbs"><span>piedpiper</span><i>›</i><b>overview.md</b></div>
+        <section class="editor" id="editor">
+          <div class="editor-text" id="editorText"><div class="line-gutter" id="lineGutter"></div><pre id="codeContent"></pre></div>
+          <div class="memory-preview" id="memoryPreview" hidden><div class="preview-toolbar"><span>VISUAL MEMORY NODE</span><b id="previewStage"></b></div><img id="previewImage" alt="Memory node"/><div class="preview-meta" id="previewMeta"></div></div>
+          <div class="benchmark-dashboard" id="benchmarkDashboard" hidden></div>
+        </section>
+        <section class="bottom-panel" id="bottomPanel">
+          <div class="bottom-tabs"><button class="active">OUTPUT</button><button>PROBLEMS <b id="problemCount">0</b></button><button>TERMINAL</button><span></span><button id="clearOutput">×</button></div>
+          <div class="output" id="output"><p><time>system</time><span>Piper workbench ready.</span></p></div>
+        </section>
+        <footer class="statusbar"><div><span>⑂ main*</span><span>↻ synced</span></div><div><span id="statusTasks">0 tasks</span><span id="statusMemories">0 memories</span><span>UTF-8</span><span>Python</span></div></footer>
+      </main>
+
+      <aside class="copilot" id="copilot">
+        <div class="copilot-head"><div><span class="piper-mark">P</span><div><b>Piper</b><small>Workspace agent</small></div></div><button id="newThread" title="New thread">＋</button></div>
+        <div class="context-bar" id="retrievalStrip"><span>◎</span><p><b id="retrievalCount">0 memories</b> in workspace context</p></div>
+        <div class="chat-scroll" id="chatScroll"><div class="chat-welcome" id="welcome"><span class="welcome-glyph">✦</span><b>Ask about this workspace</b><p>I can inspect context, create tasks and artifacts, and form visual memories from completed work.</p><button data-prompt="Create a task to review this project architecture.">Create an architecture task</button><button data-prompt="Summarize the current memory graph.">Summarize memory</button></div><div class="message-list" id="messageList"></div></div>
+        <form class="composer" id="composer"><textarea id="messageInput" rows="2" maxlength="16000" placeholder="Ask Piper or delegate a task…"></textarea><div><span>Agent mode</span><button id="sendButton" type="submit" disabled>↑</button></div></form>
+        <p class="copilot-foot">Remote inference · local workspace state</p>
+      </aside>
+    </div>
   </div>
 
-  <!-- TASK DIALOG -->
-  <dialog id="taskDialog">
-    <form method="dialog" id="taskForm">
-      <div class="dialog-head"><span>NEW TASK</span><button type="button" class="dialog-close" onclick="this.closest('dialog').close()" aria-label="Close">×</button></div>
-      <div class="dialog-body">
-        <label class="dialog-field" for="taskTitle">Task title<input id="taskTitle" maxlength="200" required placeholder="What needs to be done?" /></label>
-        <label class="dialog-field" for="taskDetails">Details<textarea id="taskDetails" rows="4" maxlength="4000" placeholder="Context, constraints, or acceptance criteria"></textarea></label>
-      </div>
-      <div class="dialog-actions"><button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button><button type="submit" class="primary-btn" id="saveTask">Create task</button></div>
-    </form>
-  </dialog>
-
-  <!-- CONNECTION DIALOG -->
-  <dialog id="connectionDialog">
-    <div class="dialog-head"><span>CONNECTION</span><button class="dialog-close" onclick="this.closest('dialog').close()" aria-label="Close">×</button></div>
-    <div class="dialog-body connection-body">
-      <b id="connectionTitle">Backend not connected</b>
-      <p id="connectionText">Start the API server, then this page will connect automatically.</p>
-      <code>python3 server.py</code>
-    </div>
-  </dialog>
-
-  <div class="toast" id="toast" role="status"></div>
+  <dialog id="taskDialog"><form method="dialog" id="taskForm"><header><b>New task</b><button value="cancel">×</button></header><label>Title<input id="taskTitle" maxlength="200" required placeholder="Implement…" /></label><label>Details<textarea id="taskDetails" rows="5" maxlength="4000" placeholder="Requirements and acceptance criteria"></textarea></label><footer><button value="cancel">Cancel</button><button class="primary" value="default" id="saveTask">Create task</button></footer></form></dialog>
+  <dialog id="connectionDialog"><header><b>Connection</b><button onclick="this.closest('dialog').close()">×</button></header><div class="dialog-copy"><b id="connectionTitle">Backend offline</b><p id="connectionText"></p><code>.venv/bin/python server.py</code></div></dialog>
+  <div class="toast" id="toast"></div>
   <script defer src="app.js"></script>
 </body>
 </html>
