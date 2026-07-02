@@ -7,6 +7,28 @@ from pathlib import Path
 from typing import Any
 
 
+def _percent_delta(new_value: float, old_value: float) -> float:
+    if old_value == 0:
+        return 0.0
+    return (new_value - old_value) / old_value * 100
+
+
+def _tradeoff(arms: dict[str, Any]) -> dict[str, Any]:
+    jpeg = arms.get("jpeg")
+    text = arms.get("text")
+    if not jpeg or not text:
+        return {}
+    token_delta = int(text["input_tokens"]) - int(jpeg["input_tokens"])
+    return {
+        "input_tokens_saved": token_delta,
+        "input_token_savings_percent": round((token_delta / max(1, int(text["input_tokens"]))) * 100, 2),
+        "accuracy_delta_points": round(float(jpeg["field_accuracy"]) - float(text["field_accuracy"]), 2),
+        "latency_delta_ms": int(jpeg["median_latency_ms"]) - int(text["median_latency_ms"]),
+        "payload_bytes_delta_percent": round(_percent_delta(float(jpeg["payload_bytes"]), float(text["payload_bytes"])), 2),
+        "cost_delta": round(float(jpeg["cost"]) - float(text["cost"]), 6),
+    }
+
+
 def analyze(observations: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]:
     cache = Path(tempfile.gettempdir()) / "piper-matplotlib-cache"
     cache.mkdir(parents=True, exist_ok=True)
@@ -50,7 +72,12 @@ def analyze(observations: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]
                 "ci95": [round(float(pd.Series(boots).quantile(.025)) * 100, 2), round(float(pd.Series(boots).quantile(.975)) * 100, 2)],
             }
         resolved = {model for values in arms.values() for model in values["resolved_models"]}
-        profiles[profile] = {"observations": len(profile_group), "arms": arms, "comparable_model": len(resolved) == 1}
+        profiles[profile] = {
+            "observations": len(profile_group),
+            "arms": arms,
+            "comparable_model": len(resolved) == 1,
+            "tradeoff": _tradeoff(arms),
+        }
     primary = frame[frame["profile"] == "primary"].copy()
     plot_specs = []
     sns.set_theme(style="whitegrid")

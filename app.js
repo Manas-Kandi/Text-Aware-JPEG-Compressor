@@ -12,6 +12,13 @@ const PHASE_LABELS = {
   text: 'text arm', analysis: 'scoring and charts', complete: 'done',
   failed: 'failed', cancelled: 'stopped',
 };
+const CHART_EXPLANATIONS = {
+  'accuracy-by-length.png': 'Shows whether each arm keeps answers correct as the synthetic project log gets longer.',
+  'accuracy-by-probe.png': 'Breaks accuracy down by question type, so weak spots are visible instead of averaged away.',
+  'survival-by-depth.png': 'Tracks how many trajectories still have no prior mistake as checkpoints get deeper.',
+  'efficiency.png': 'Compares latency, reported input tokens, payload bytes, and reported cost for JPEG versus text requests.',
+  'capacity-and-cost.png': 'Combines page count, depth, cost, latency, and accuracy to show the practical tradeoff.',
+};
 
 let state = { messages: [], tasks: [], notes: [], memories: [], edges: [], latest_benchmark: null, config: {} };
 let artifacts = [];
@@ -239,6 +246,7 @@ async function renderResult() {
   }
   container.innerHTML = runDetailHtml(run);
   bindResumeButtons(container);
+  bindCopyLogButtons(container);
   hydrateTranscripts(container);
 }
 
@@ -335,6 +343,7 @@ async function openObservation(runId, observationId) {
 function runDetailHtml(run) {
   if (!run) return '<div class="card"><h2>Result</h2><p class="muted">No runs yet. Run one.</p></div>';
   const arms = run.summary?.profiles?.primary?.arms;
+  const tradeoff = run.summary?.profiles?.primary?.tradeoff;
   const parts = [];
   if (arms?.jpeg && arms?.text) parts.push(verdictHtml(run, arms));
   else if (run.status === 'complete') parts.push('<div class="verdict"><h3>The run finished, but there is no paired summary.</h3><p>Check the artifacts below.</p></div>');
@@ -342,6 +351,7 @@ function runDetailHtml(run) {
   else if (run.status === 'cancelled') parts.push('<div class="verdict"><h3>The run was stopped.</h3><p>Resume it to finish the remaining observations.</p></div>');
   else parts.push(`<div class="verdict"><h3>Running: ${escapeHtml(PHASE_LABELS[run.phase] || run.phase)}</h3><p>${run.progress.completed} of ${run.progress.total || '?'} observations done. Results appear here when the run completes.</p></div>`);
   if (arms?.jpeg && arms?.text) parts.push(kpisHtml(arms));
+  if (arms?.jpeg && arms?.text && tradeoff) parts.push(tokenTradeoffHtml(arms, tradeoff));
   const closed = run.summary?.profiles?.closed_loop?.arms;
   if (closed?.jpeg && closed?.text) {
     parts.push(`<div class="card" style="margin-bottom:16px"><h2>Closed-loop stress test</h2><p class="muted">Here the model's own past answers get fed back into the context. Errors can compound. We report it apart from the main result.</p><p>JPEG ${closed.jpeg.field_accuracy}% · Text ${closed.text.field_accuracy}%</p></div>`);
@@ -349,17 +359,23 @@ function runDetailHtml(run) {
   const charts = (run.artifacts || []).filter(item => item.path.startsWith('charts/'));
   if (charts.length) {
     parts.push(`<div class="charts">${charts.map(item =>
-      `<figure class="chart"><img src="${assetUrl(item.url)}?v=${encodeURIComponent(run.updated_at)}" alt="Benchmark chart" loading="lazy"><figcaption>${escapeHtml(item.path.split('/').pop())}</figcaption></figure>`).join('')}</div>`);
+      chartHtml(item, run)).join('')}</div>`);
   }
   if (run.progress?.completed > 0) {
     parts.push(`<div class="card" style="margin-bottom:16px"><h2>Transcript</h2><p class="muted">Every question, both answers, and the exact pages the model saw. Click an answer for the full exchange.</p><div class="transcript" data-run="${escapeHtml(run.id)}"><p class="muted">Loading…</p></div></div>`);
   }
   const files = (run.artifacts || []).filter(item => !item.path.startsWith('charts/') && !item.path.startsWith('pages/'));
-  const meta = `<p class="hint">Run ${escapeHtml(run.id.slice(0, 8))} · model ${escapeHtml(run.config.model || '?')} · lengths ${escapeHtml(String(run.config.lengths || ''))} · seeds ${escapeHtml(String((run.config.seeds || []).length))} · ${escapeHtml(formatWhen(run.created_at))}</p>`;
+  const meta = `<p class="hint">${escapeHtml(run.run_folder || `Run ${run.id.slice(0, 8)}`)} · model ${escapeHtml(run.config.model || '?')} · lengths ${escapeHtml(String(run.config.lengths || ''))} · seeds ${escapeHtml(String((run.config.seeds || []).length))} · ${escapeHtml(formatWhen(run.created_at))}</p>`;
   parts.push(`<div class="card"><h2>Raw data</h2><div class="artifact-links">${
     files.map(item => `<a href="${assetUrl(item.url)}" target="_blank" rel="noopener">${escapeHtml(item.path)}</a>`).join('') || '<span class="muted">No files yet.</span>'
-  }${['failed', 'cancelled'].includes(run.status) ? `<button class="row-action" data-resume="${escapeHtml(run.id)}">Resume this run</button>` : ''}</div>${meta}</div>`);
+  }<button class="row-action" data-copy-logs="${escapeHtml(run.id)}">Copy logs</button>${['failed', 'cancelled'].includes(run.status) ? `<button class="row-action" data-resume="${escapeHtml(run.id)}">Resume this run</button>` : ''}</div>${meta}</div>`);
   return parts.join('');
+}
+
+function chartHtml(item, run) {
+  const name = item.path.split('/').pop();
+  const explanation = CHART_EXPLANATIONS[name] || 'Shows one benchmark slice for comparing JPEG context against text context.';
+  return `<figure class="chart"><img src="${assetUrl(item.url)}?v=${encodeURIComponent(run.updated_at)}" alt="Benchmark chart" loading="lazy"><figcaption><span>${escapeHtml(name)}</span><span class="info-tip" tabindex="0" title="${escapeHtml(explanation)}" data-tip="${escapeHtml(explanation)}">i</span></figcaption></figure>`;
 }
 
 function verdictHtml(run, arms) {
@@ -395,6 +411,29 @@ function kpisHtml(arms) {
   }</div>`;
 }
 
+function tokenTradeoffHtml(arms, tradeoff) {
+  const saved = Number(tradeoff.input_tokens_saved || 0);
+  const savedPct = Number(tradeoff.input_token_savings_percent || 0);
+  const accuracyDelta = Number(tradeoff.accuracy_delta_points || 0);
+  const latencyDelta = Number(tradeoff.latency_delta_ms || 0);
+  const payloadDelta = Number(tradeoff.payload_bytes_delta_percent || 0);
+  const savedText = saved >= 0
+    ? `${formatCompact(saved)} fewer reported input tokens`
+    : `${formatCompact(Math.abs(saved))} more reported input tokens`;
+  const accuracyText = `${accuracyDelta >= 0 ? '+' : ''}${accuracyDelta.toFixed(2)} accuracy points`;
+  const latencyText = `${latencyDelta >= 0 ? '+' : ''}${formatCompact(latencyDelta)} ms median latency`;
+  const payloadText = `${payloadDelta >= 0 ? '+' : ''}${payloadDelta.toFixed(1)}% request bytes`;
+  return `<div class="card tradeoff-card">
+    <h2>Token context tradeoff</h2>
+    <div class="tradeoff-grid">
+      <div><span>Saved context</span><b>${escapeHtml(savedText)}</b><small>${savedPct.toFixed(1)}% vs text · provider reported</small></div>
+      <div><span>Accuracy tradeoff</span><b>${escapeHtml(accuracyText)}</b><small>JPEG minus text field accuracy</small></div>
+      <div><span>Runtime tradeoff</span><b>${escapeHtml(latencyText)}</b><small>${escapeHtml(payloadText)} · JPEG minus text</small></div>
+    </div>
+    <p class="hint">JPEG totals: ${formatCompact(arms.jpeg.input_tokens)} input tokens. Text totals: ${formatCompact(arms.text.input_tokens)} input tokens.</p>
+  </div>`;
+}
+
 /* ---------- Runs list ---------- */
 
 async function loadRuns() {
@@ -402,10 +441,11 @@ async function loadRuns() {
   try {
     const runs = (await api('/api/benchmarks')).runs || [];
     if (!runs.length) { container.innerHTML = '<p class="muted">No runs yet. Go run one.</p>'; $('#runDetail').innerHTML = ''; return; }
-    container.innerHTML = `<table class="runs"><thead><tr><th>When</th><th>Model</th><th>Status</th><th>Progress</th><th>JPEG</th><th>Text</th><th></th></tr></thead><tbody>${
+    container.innerHTML = `<table class="runs"><thead><tr><th>Run</th><th>When</th><th>Model</th><th>Status</th><th>Progress</th><th>JPEG</th><th>Text</th><th></th></tr></thead><tbody>${
       runs.map(run => {
         const arms = run.summary?.profiles?.primary?.arms;
         return `<tr>
+          <td class="mono">${escapeHtml(run.run_folder || run.id.slice(0, 8))}</td>
           <td>${escapeHtml(formatWhen(run.created_at))}</td>
           <td class="mono">${escapeHtml(run.config.model || '?')}</td>
           <td><span class="status-chip ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></td>
@@ -421,6 +461,7 @@ async function loadRuns() {
       selectedRunId = run.id;
       $('#runDetail').innerHTML = runDetailHtml(run);
       bindResumeButtons($('#runDetail'));
+      bindCopyLogButtons($('#runDetail'));
       hydrateTranscripts($('#runDetail'));
       $('#runDetail').scrollIntoView({ behavior: 'smooth' });
     }));
@@ -444,6 +485,37 @@ function bindResumeButtons(root) {
       showToast('Run resumed. Finished observations are kept.');
     } catch (error) { showToast(error.message); button.disabled = false; }
   }));
+}
+
+function bindCopyLogButtons(root) {
+  root.querySelectorAll('[data-copy-logs]').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      const data = await api(`/api/benchmarks/${button.dataset.copyLogs}/diagnostic-log`);
+      await copyText(data.log || '');
+      showToast('Diagnostic logs copied.');
+    } catch (error) {
+      showToast(`Could not copy logs: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  }));
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
 }
 
 /* ---------- Playground ---------- */

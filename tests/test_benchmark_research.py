@@ -117,7 +117,7 @@ class ResearchBenchmarkTest(unittest.TestCase):
 
     def test_runner_checkpoints_and_resume_do_not_duplicate(self):
         run_id = uuid.uuid4().hex
-        config = {"model": "test/vision", "lengths": [4], "seeds": [1103]}
+        config = {"model": "test/vision", "lengths": [4], "seeds": [1103], "run_folder": "run A"}
         timestamp = server.now_iso()
         server.execute(
             "INSERT INTO benchmark_v2_runs (id,created_at,updated_at,status,phase,config) VALUES (?,?,?,?,?,?)",
@@ -140,6 +140,10 @@ class ResearchBenchmarkTest(unittest.TestCase):
         final = server.rows("SELECT * FROM benchmark_v2_runs WHERE id=?", (run_id,))[0]
         self.assertEqual(final["status"], "complete")
         self.assertEqual(final["completed_observations"], 10)
+        self.assertTrue((self.root / "runs" / "run A" / "manifest.json").exists())
+        public = server.benchmark_public(final)
+        self.assertEqual(public["run_folder"], "run A")
+        self.assertIn("/benchmark-runs/run%20A/manifest.json", [item["url"] for item in public["artifacts"]])
 
     def test_transcript_endpoints_rebuild_verified_context(self):
         run_id = uuid.uuid4().hex
@@ -192,6 +196,8 @@ class ResearchBenchmarkTest(unittest.TestCase):
         summary = analyze(observations, output)
         self.assertIn("primary", summary["profiles"])
         self.assertTrue(summary["profiles"]["primary"]["comparable_model"])
+        self.assertEqual(summary["profiles"]["primary"]["tradeoff"]["input_tokens_saved"], 0)
+        self.assertEqual(summary["profiles"]["primary"]["tradeoff"]["accuracy_delta_points"], -25.0)
         self.assertEqual(len(summary["charts"]), 5)
         self.assertTrue((output / "summary.csv").exists())
         self.assertTrue(all((output / path).exists() for path in summary["charts"]))

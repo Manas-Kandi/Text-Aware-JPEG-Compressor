@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import requests
 from fastapi import FastAPI, HTTPException
@@ -970,15 +971,59 @@ def benchmark_runner(model: str) -> BenchmarkRunner:
     return BenchmarkRunner(DB_PATH, BENCHMARK_RUNS, lambda messages: benchmark_model_call(model, messages))
 
 
+def run_letters(index: int) -> str:
+    letters = ""
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(ord("A") + remainder) + letters
+    return letters or "A"
+
+
+def run_folder_index(label: str) -> int | None:
+    match = re.fullmatch(r"run ([A-Z]+)", label)
+    if not match:
+        return None
+    value = 0
+    for char in match.group(1):
+        value = value * 26 + ord(char) - ord("A") + 1
+    return value
+
+
+def next_benchmark_run_folder() -> str:
+    used: set[int] = set()
+    for path in BENCHMARK_RUNS.iterdir():
+        if path.is_dir():
+            index = run_folder_index(path.name)
+            if index:
+                used.add(index)
+    for row in rows("SELECT config FROM benchmark_v2_runs"):
+        try:
+            index = run_folder_index(str(json.loads(row["config"] or "{}").get("run_folder") or ""))
+        except (json.JSONDecodeError, TypeError):
+            index = None
+        if index:
+            used.add(index)
+    index = 1
+    while index in used:
+        index += 1
+    return f"run {run_letters(index)}"
+
+
+def benchmark_run_folder(config: dict[str, Any], run_id: str) -> str:
+    return str(config.get("run_folder") or run_id)
+
+
 def benchmark_public(run: dict[str, Any]) -> dict[str, Any]:
     item = dict(run)
     item["config"] = json.loads(item.get("config") or "{}")
     item["summary"] = json.loads(item.get("summary") or "{}")
+    item["run_folder"] = benchmark_run_folder(item["config"], item["id"])
     total = int(item.get("total_observations") or 0)
     completed = int(item.get("completed_observations") or 0)
     item["progress"] = {"completed": completed, "total": total, "percent": round(completed / max(1, total) * 100, 1)}
     artifacts = rows("SELECT path,size FROM benchmark_v2_artifacts WHERE run_id=? ORDER BY path", (item["id"],))
-    item["artifacts"] = [{**artifact, "url": f"/benchmark-runs/{item['id']}/{artifact['path']}"} for artifact in artifacts]
+    folder = quote(item["run_folder"], safe="")
+    item["artifacts"] = [{**artifact, "url": f"/benchmark-runs/{folder}/{quote(artifact['path'], safe='/')}"} for artifact in artifacts]
     item["warnings"] = [
         "This pilot estimates effects and variance; it does not establish model-independent superiority.",
         "Image token accounting may not be directly comparable to text token accounting.",
@@ -993,6 +1038,132 @@ def list_research_benchmarks() -> list[dict[str, Any]]:
 def get_research_benchmark(run_id: str) -> dict[str, Any] | None:
     found = rows("SELECT * FROM benchmark_v2_runs WHERE id=?", (run_id,))
     return benchmark_public(found[0]) if found else None
+
+
+def compact_text(value: Any, limit: int = 180) -> str:
+    text = str(value).replace("\n", "\\n")
+    return text if len(text) <= limit else text[:limit - 1] + "..."
+
+
+def percent(value: float) -> str:
+    return f"{value:.1f}%"
+
+
+def benchmark_diagnostic_log(run_id: str) -> str:
+    found = rows("SELECT * FROM benchmark_v2_runs WHERE id=?", (run_id,))
+    if not found:
+        raise ValueError("Benchmark run not found")
+    run = benchmark_public(found[0])
+    observations = rows(
+        """SELECT o.*, t.seed, t.length FROM benchmark_v2_observations o
+        LEFT JOIN benchmark_v2_trajectories t ON t.run_id = o.run_id AND t.id = o.trajectory_id
+        WHERE o.run_id=? ORDER BY o.profile, o.trajectory_id, o.checkpoint, o.arm""",
+        (run_id,),
+    )
+    summary = run.get("summary") or {}
+    primary = summary.get("profiles", {}).get("primary", {})
+    arms = primary.get("arms", {})
+    tradeoff = primary.get("tradeoff", {})
+    lines = [
+        "PIEDPIPER JPEG CONTEXT DIAGNOSTIC LOG",
+        "Paste this into Codex when asking for help diagnosing JPEG-as-context behavior.",
+        "",
+        "RUN",
+        f"- folder: {run.get('run_folder')}",
+        f"- id: {run['id']}",
+        f"- status: {run['status']} / {run['phase']}",
+        f"- created_at: {run['created_at']}",
+        f"- updated_at: {run['updated_at']}",
+        f"- model: {run['config'].get('model')}",
+        f"- lengths: {run['config'].get('lengths')}",
+        f"- seeds: {run['config'].get('seeds')}",
+        f"- closed_loop: {run['config'].get('closed_loop', True)}",
+        f"- observations: {run['progress']['completed']} / {run['progress']['total']}",
+        "",
+        "PRIMARY SUMMARY",
+    ]
+    for arm_name in ("jpeg", "text"):
+        arm = arms.get(arm_name)
+        if not arm:
+            continue
+        lines.append(
+            f"- {arm_name}: field_accuracy={arm.get('field_accuracy')}%, probe_accuracy={arm.get('probe_accuracy')}%, "
+            f"input_tokens={arm.get('input_tokens')}, output_tokens={arm.get('output_tokens')}, "
+            f"payload_bytes={arm.get('payload_bytes')}, median_latency_ms={arm.get('median_latency_ms')}, "
+            f"cost={arm.get('cost')}, failures={arm.get('failures')}, ci95={arm.get('ci95')}"
+        )
+    if tradeoff:
+        lines.extend([
+            "",
+            "TOKEN / QUALITY TRADEOFF",
+            f"- input_tokens_saved_by_jpeg: {tradeoff.get('input_tokens_saved')}",
+            f"- input_token_savings_percent: {tradeoff.get('input_token_savings_percent')}%",
+            f"- accuracy_delta_points_jpeg_minus_text: {tradeoff.get('accuracy_delta_points')}",
+            f"- latency_delta_ms_jpeg_minus_text: {tradeoff.get('latency_delta_ms')}",
+            f"- payload_bytes_delta_percent_jpeg_minus_text: {tradeoff.get('payload_bytes_delta_percent')}%",
+            f"- cost_delta_jpeg_minus_text: {tradeoff.get('cost_delta')}",
+        ])
+    probe_groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    paired: dict[tuple[str, str, int], dict[str, dict[str, Any]]] = {}
+    for row in observations:
+        key = (row["profile"], row["arm"], row["probe_type"])
+        bucket = probe_groups.setdefault(key, {"total": 0, "correct": 0, "tokens": 0, "payload": 0, "pages": 0, "latency": []})
+        bucket["total"] += 1
+        bucket["correct"] += int(row["correct"])
+        bucket["tokens"] += int(row["input_tokens"])
+        bucket["payload"] += int(row["payload_bytes"])
+        bucket["pages"] += int(row["page_count"])
+        bucket["latency"].append(int(row["latency_ms"]))
+        paired.setdefault((row["profile"], row["trajectory_id"], row["checkpoint"]), {})[row["arm"]] = row
+    if probe_groups:
+        lines.extend(["", "ACCURACY BY PROFILE / ARM / PROBE"])
+        for key in sorted(probe_groups):
+            bucket = probe_groups[key]
+            mean_pages = bucket["pages"] / max(1, bucket["total"])
+            mean_latency = sum(bucket["latency"]) / max(1, len(bucket["latency"]))
+            accuracy = bucket["correct"] / max(1, bucket["total"]) * 100
+            lines.append(
+                f"- {key[0]} / {key[1]} / {key[2]}: {bucket['correct']}/{bucket['total']} correct "
+                f"({percent(accuracy)}), input_tokens={bucket['tokens']}, payload_bytes={bucket['payload']}, "
+                f"avg_pages={mean_pages:.2f}, avg_latency_ms={mean_latency:.0f}"
+            )
+    pair_lines: list[str] = []
+    for pair_key in sorted(paired):
+        jpeg = paired[pair_key].get("jpeg")
+        text = paired[pair_key].get("text")
+        if not jpeg or not text or int(jpeg["correct"]) == int(text["correct"]):
+            continue
+        pair_lines.append(
+            f"- {pair_key[0]} {pair_key[1]} c{pair_key[2]} {jpeg['probe_type']}: "
+            f"jpeg_correct={jpeg['correct']} text_correct={text['correct']} expected={compact_text(jpeg['expected'])} "
+            f"jpeg_answer={compact_text(jpeg['answer'])} text_answer={compact_text(text['answer'])}"
+        )
+    if pair_lines:
+        lines.extend(["", "PAIRED DISAGREEMENTS (first 40)", *pair_lines[:40]])
+    failure_lines: list[str] = []
+    for row in observations:
+        if row["arm"] != "jpeg" or int(row["correct"]):
+            continue
+        counterpart = paired.get((row["profile"], row["trajectory_id"], row["checkpoint"]), {}).get("text")
+        failure_lines.append(
+            f"- {row['profile']} {row['trajectory_id']} length={row['trajectory_length']} checkpoint={row['checkpoint']} "
+            f"probe={row['probe_type']} pages={row['page_count']} input_tokens={row['input_tokens']} "
+            f"payload_bytes={row['payload_bytes']} latency_ms={row['latency_ms']} text_correct={counterpart['correct'] if counterpart else '?'} "
+            f"prompt={compact_text(row['prompt'])} expected={compact_text(row['expected'])} answer={compact_text(row['answer'])}"
+        )
+    if failure_lines:
+        lines.extend(["", "JPEG FAILURES (first 40)", *failure_lines[:40]])
+    error_lines = [
+        f"- {row['profile']} {row['arm']} {row['trajectory_id']} c{row['checkpoint']}: {row['error_type']} {compact_text(row['error'], 240)}"
+        for row in observations
+        if row.get("error_type") or row.get("error")
+    ]
+    if error_lines:
+        lines.extend(["", "ERRORS", *error_lines[:30]])
+    artifact_paths = [item["path"] for item in run.get("artifacts", [])]
+    if artifact_paths:
+        lines.extend(["", "ARTIFACTS", *[f"- {path}" for path in artifact_paths]])
+    return "\n".join(lines) + "\n"
 
 
 def public_observation(row: dict[str, Any]) -> dict[str, Any]:
@@ -1031,11 +1202,15 @@ def rebuild_observation_context(run_id: str, observation: dict[str, Any]) -> tup
 
 
 def observation_page_urls(run_id: str, observation: dict[str, Any]) -> list[str]:
-    pages_dir = BENCHMARK_RUNS / run_id / "pages"
+    run_rows = rows("SELECT config FROM benchmark_v2_runs WHERE id=?", (run_id,))
+    config = json.loads(run_rows[0]["config"] or "{}") if run_rows else {}
+    folder = benchmark_run_folder(config, run_id)
+    pages_dir = BENCHMARK_RUNS / folder / "pages"
     if not pages_dir.exists():
         return []
     pattern = f"{observation['trajectory_id']}-c{observation['checkpoint']}-p*.jpg"
-    return [f"/benchmark-runs/{run_id}/pages/{path.name}" for path in sorted(pages_dir.glob(pattern))]
+    url_folder = quote(folder, safe="")
+    return [f"/benchmark-runs/{url_folder}/pages/{quote(path.name)}" for path in sorted(pages_dir.glob(pattern))]
 
 
 def latest_research_benchmark() -> dict[str, Any] | None:
@@ -1055,6 +1230,7 @@ def submit_research_benchmark(config: dict[str, Any], run_id: str | None = None)
     if existing:
         execute("UPDATE benchmark_v2_runs SET status='queued',phase='queued',cancel_requested=0,error='',updated_at=? WHERE id=?", (timestamp, run_id))
     else:
+        config = {**config, "run_folder": next_benchmark_run_folder()}
         execute(
             "INSERT INTO benchmark_v2_runs (id,created_at,updated_at,status,phase,config) VALUES (?,?,?,?,?,?)",
             (run_id, timestamp, timestamp, "queued", "queued", json.dumps(config, sort_keys=True)),
@@ -1207,6 +1383,14 @@ def get_benchmark(run_id: str) -> dict[str, Any]:
     if not result:
         raise HTTPException(404, "Benchmark run not found")
     return result
+
+
+@app.get("/api/benchmarks/{run_id}/diagnostic-log")
+def get_benchmark_diagnostic_log(run_id: str) -> dict[str, str]:
+    try:
+        return {"log": benchmark_diagnostic_log(run_id)}
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
 
 
 @app.post("/api/benchmarks")

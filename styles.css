@@ -122,10 +122,29 @@ main { max-width: 1140px; margin: 0 auto; padding: 24px 20px 80px; }
 .kpi small { color: var(--muted); font-size: 11px; }
 .kpi.jpeg b { color: var(--green); }
 .kpi.text b { color: var(--blue); }
+.tradeoff-card { margin-bottom: 16px; }
+.tradeoff-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tradeoff-grid div { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--elev); }
+.tradeoff-grid span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.tradeoff-grid b { display: block; margin: 5px 0 2px; font-size: 17px; }
+.tradeoff-grid small { color: var(--muted); font-size: 11px; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
 .chart { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .chart img { width: 100%; display: block; border-radius: 4px; }
-.chart figcaption { padding: 8px 4px 2px; color: #555; font-size: 11px; font-family: var(--mono); }
+.chart figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 4px 2px; color: #555; font-size: 11px; font-family: var(--mono); }
+.info-tip {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 18px; height: 18px; border-radius: 50%; background: #eef1f5; color: #333;
+  font: 700 11px var(--sans); cursor: help;
+}
+.info-tip::after {
+  content: attr(data-tip); position: absolute; right: 0; bottom: calc(100% + 8px);
+  width: min(260px, 60vw); padding: 8px 10px; border-radius: 7px;
+  background: #16191f; color: #f4f6f8; box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  font: 12px/1.4 var(--sans); opacity: 0; pointer-events: none; transform: translateY(4px);
+  transition: .15s; z-index: 5;
+}
+.info-tip:hover::after, .info-tip:focus::after { opacity: 1; transform: none; }
 .artifact-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .artifact-links a {
   padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px;
@@ -229,7 +248,7 @@ dialog footer .primary { border: 0; }
 .toast.show { opacity: 1; transform: none; }
 
 @media (max-width: 960px) {
-  .grid-2, .grid-3, .kpis, .charts { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .kpis, .charts, .tradeoff-grid { grid-template-columns: 1fr; }
   .tabs { gap: 0; }
   .brand span { display: none; }
 }
