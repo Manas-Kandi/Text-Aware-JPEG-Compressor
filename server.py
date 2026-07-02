@@ -216,6 +216,8 @@ class BenchmarkRequest(BaseModel):
     lengths: list[int] = Field(default_factory=lambda: list(DEFAULT_LENGTHS))
     seeds: list[int] = Field(default_factory=lambda: list(DEFAULT_SEEDS))
     closed_loop: bool = True
+    density_sweep: bool = False
+    density_lengths: list[int] = Field(default_factory=list)
 
     def normalized(self) -> dict[str, Any]:
         lengths = sorted(set(self.lengths))
@@ -224,7 +226,17 @@ class BenchmarkRequest(BaseModel):
             raise ValueError("lengths must contain one to four values between 4 and 128")
         if not seeds or len(seeds) > 5:
             raise ValueError("seeds must contain one to five values")
-        return {"model": self.model or default_benchmark_model(), "lengths": lengths, "seeds": seeds, "closed_loop": self.closed_loop}
+        density_lengths = sorted(set(self.density_lengths or [16, 32, 64, 128, 256, 512]))
+        if self.density_sweep and (len(density_lengths) > 6 or any(length < 8 or length > 512 for length in density_lengths)):
+            raise ValueError("density_lengths must contain up to six values between 8 and 512")
+        return {
+            "model": self.model or default_benchmark_model(),
+            "lengths": lengths,
+            "seeds": seeds,
+            "closed_loop": self.closed_loop,
+            "density_sweep": self.density_sweep,
+            "density_lengths": density_lengths if self.density_sweep else [],
+        }
 
 
 app = FastAPI(title="Piper Agent", version="0.1.0")
@@ -1109,6 +1121,8 @@ def benchmark_diagnostic_log(run_id: str) -> str:
         f"- lengths: {run['config'].get('lengths')}",
         f"- seeds: {run['config'].get('seeds')}",
         f"- closed_loop: {run['config'].get('closed_loop', True)}",
+        f"- density_sweep: {run['config'].get('density_sweep', False)}",
+        f"- density_lengths: {run['config'].get('density_lengths', [])}",
         f"- observations: {run['progress']['completed']} / {run['progress']['total']}",
         "",
         "PRIMARY SUMMARY",
@@ -1134,6 +1148,15 @@ def benchmark_diagnostic_log(run_id: str) -> str:
             f"- payload_bytes_delta_percent_jpeg_minus_text: {tradeoff.get('payload_bytes_delta_percent')}%",
             f"- cost_delta_jpeg_minus_text: {tradeoff.get('cost_delta')}",
         ])
+    if summary.get("token_crossover"):
+        lines.extend(["", "TOKEN CROSSOVER"])
+        for profile, crossover in summary["token_crossover"].items():
+            lines.append(f"- {profile}: first_jpeg_token_win_length={crossover.get('first_jpeg_token_win_length')}")
+            for point in crossover.get("points", [])[:8]:
+                lines.append(
+                    f"  - length={point.get('trajectory_length')} jpeg={point.get('jpeg_input_tokens')} "
+                    f"text={point.get('text_input_tokens')} saved_by_jpeg={point.get('input_tokens_saved_by_jpeg')}"
+                )
     probe_groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     paired: dict[tuple[str, str, int], dict[str, dict[str, Any]]] = {}
     for row in observations:

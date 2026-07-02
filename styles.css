@@ -87,7 +87,7 @@ main { max-width: 1140px; margin: 0 auto; padding: 24px 20px 80px; }
   display: block; width: 100%; margin-top: 6px; padding: 9px 10px;
   background: var(--elev); border: 1px solid var(--line); border-radius: 7px; color: var(--ink);
 }
-.segment { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.segment { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
 .segment label {
   display: block; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--elev); cursor: pointer;

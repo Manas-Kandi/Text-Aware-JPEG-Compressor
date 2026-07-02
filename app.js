@@ -6,6 +6,7 @@ const THEME_KEY = 'piper-theme';
 const PRESETS = {
   quick: { lengths: [8, 16], seeds: [1103, 2207] },
   full: { lengths: [16, 32, 64, 128], seeds: [1103, 2207, 3301, 4409, 5519] },
+  density: { lengths: [16], seeds: [1103], density_sweep: true, density_lengths: [16, 32, 64, 128, 256, 512] },
 };
 const PHASE_LABELS = {
   queued: 'waiting in queue', preparing: 'building trajectories', jpeg: 'jpeg arm',
@@ -18,6 +19,7 @@ const CHART_EXPLANATIONS = {
   'survival-by-depth.png': 'Tracks how many trajectories still have no prior mistake as checkpoints get deeper.',
   'efficiency.png': 'Compares latency, reported input tokens, payload bytes, and reported cost for JPEG versus text requests.',
   'capacity-and-cost.png': 'Combines page count, depth, cost, latency, and accuracy to show the practical tradeoff.',
+  'token-crossover-by-density.png': 'Shows whether denser, longer JPEG pages become cheaper than plain text, and how accuracy changes near that point.',
 };
 
 let state = { messages: [], tasks: [], notes: [], memories: [], edges: [], latest_benchmark: null, config: {} };
@@ -143,7 +145,13 @@ function renderAll() {
 
 function presetConfig() {
   const preset = PRESETS[document.querySelector('input[name=preset]:checked').value];
-  return { lengths: preset.lengths, seeds: preset.seeds, closed_loop: $('#closedLoop').checked };
+  return {
+    lengths: preset.lengths,
+    seeds: preset.seeds,
+    closed_loop: $('#closedLoop').checked,
+    density_sweep: Boolean(preset.density_sweep),
+    density_lengths: preset.density_lengths || [],
+  };
 }
 
 function chosenModel() {
@@ -155,7 +163,10 @@ function estimateCalls(config) {
   const probes = length => new Set([.25, .5, .75, 1].map(f => Math.max(4, Math.round(length * f)))).size;
   const primary = config.lengths.reduce((sum, length) => sum + probes(length), 0) * config.seeds.length * 2;
   const closed = config.closed_loop ? Math.min(config.seeds.length, 4) * 4 * 2 : 0;
-  return primary + closed;
+  const density = config.density_sweep
+    ? config.density_lengths.reduce((sum, length) => sum + probes(length), 0) * Math.min(config.seeds.length, 2) * 2
+    : 0;
+  return primary + closed + density;
 }
 
 function updateRunHint() {
@@ -365,7 +376,8 @@ function runDetailHtml(run) {
     parts.push(`<div class="card" style="margin-bottom:16px"><h2>Transcript</h2><p class="muted">Every question, both answers, and the exact pages the model saw. Click an answer for the full exchange.</p><div class="transcript" data-run="${escapeHtml(run.id)}"><p class="muted">Loading…</p></div></div>`);
   }
   const files = (run.artifacts || []).filter(item => !item.path.startsWith('charts/') && !item.path.startsWith('pages/'));
-  const meta = `<p class="hint">${escapeHtml(run.run_folder || `Run ${run.id.slice(0, 8)}`)} · model ${escapeHtml(run.config.model || '?')} · lengths ${escapeHtml(String(run.config.lengths || ''))} · seeds ${escapeHtml(String((run.config.seeds || []).length))} · ${escapeHtml(formatWhen(run.created_at))}</p>`;
+  const density = run.config.density_sweep ? ` · density ${escapeHtml(String(run.config.density_lengths || ''))}` : '';
+  const meta = `<p class="hint">${escapeHtml(run.run_folder || `Run ${run.id.slice(0, 8)}`)} · model ${escapeHtml(run.config.model || '?')} · lengths ${escapeHtml(String(run.config.lengths || ''))}${density} · seeds ${escapeHtml(String((run.config.seeds || []).length))} · ${escapeHtml(formatWhen(run.created_at))}</p>`;
   parts.push(`<div class="card"><h2>Raw data</h2><div class="artifact-links">${
     files.map(item => `<a href="${assetUrl(item.url)}" target="_blank" rel="noopener">${escapeHtml(item.path)}</a>`).join('') || '<span class="muted">No files yet.</span>'
   }<button class="row-action" data-copy-logs="${escapeHtml(run.id)}">Copy logs</button>${['failed', 'cancelled'].includes(run.status) ? `<button class="row-action" data-resume="${escapeHtml(run.id)}">Resume this run</button>` : ''}</div>${meta}</div>`);

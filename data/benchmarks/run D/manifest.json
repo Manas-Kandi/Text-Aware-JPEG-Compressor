@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "run_id": "1735b6e1b1d042abb61014b9e64b0e61",
+  "created_at": "2026-07-02T05:53:17.130202+00:00",
+  "question": "JPEG pages versus identical plain-text context for long-running state fidelity",
+  "config": {
+    "closed_loop": true,
+    "density_lengths": [
+      16,
+      32,
+      64,
+      128,
+      256,
+      512
+    ],
+    "density_sweep": true,
+    "lengths": [
+      16
+    ],
+    "model": "openai/gpt-5-nano-2025-08-07",
+    "run_folder": "run D",
+    "seeds": [
+      1103
+    ]
+  },
+  "limitations": [
+    "Pilot effect estimates do not establish broad model-independent claims.",
+    "Results are specific to the pinned model and rendering configuration.",
+    "Image token accounting may not be comparable with text token accounting.",
+    "Synthetic trajectories do not reproduce all properties of software work.",
+    "Closed-loop observations conflate context fidelity with error propagation."
+  ]
+}

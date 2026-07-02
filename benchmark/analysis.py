@@ -50,6 +50,7 @@ def analyze(observations: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]
         return summary
     frame["field_accuracy"] = frame["fields_correct"] / frame["fields_total"].clip(lower=1)
     profiles: dict[str, Any] = {}
+    token_crossover: dict[str, Any] = {}
     for profile, profile_group in frame.groupby("profile"):
         arms: dict[str, Any] = {}
         for arm, group in profile_group.groupby("arm"):
@@ -78,6 +79,27 @@ def analyze(observations: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]
             "comparable_model": len(resolved) == 1,
             "tradeoff": _tradeoff(arms),
         }
+        token_rows = profile_group.groupby(["trajectory_length", "arm"], as_index=False).agg(
+            input_tokens=("input_tokens", "mean"),
+            field_accuracy=("field_accuracy", "mean"),
+            page_count=("page_count", "mean"),
+        )
+        token_pivot = token_rows.pivot(index="trajectory_length", columns="arm", values="input_tokens")
+        if {"jpeg", "text"}.issubset(token_pivot.columns):
+            deltas = token_pivot["text"] - token_pivot["jpeg"]
+            first_win = next((int(length) for length, delta in deltas.items() if delta >= 0), None)
+            token_crossover[profile] = {
+                "first_jpeg_token_win_length": first_win,
+                "points": [
+                    {
+                        "trajectory_length": int(length),
+                        "jpeg_input_tokens": round(float(token_pivot.loc[length, "jpeg"]), 2),
+                        "text_input_tokens": round(float(token_pivot.loc[length, "text"]), 2),
+                        "input_tokens_saved_by_jpeg": round(float(deltas.loc[length]), 2),
+                    }
+                    for length in token_pivot.index
+                ],
+            }
     primary = frame[frame["profile"] == "primary"].copy()
     plot_specs = []
     sns.set_theme(style="whitegrid")
@@ -110,10 +132,31 @@ def analyze(observations: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]
     sns.scatterplot(totals, x="cost", y="field_accuracy", hue="arm", s=120, ax=axes[1]); axes[1].set(title="Accuracy-cost Pareto view")
     sns.scatterplot(totals, x="latency_ms", y="field_accuracy", hue="arm", s=120, ax=axes[2]); axes[2].set(title="Accuracy-latency Pareto view")
     plot_specs.append((fig, "capacity-and-cost.png"))
+    density = frame[frame["profile"] == "density_sweep"].copy()
+    crossover_source = density if not density.empty else primary
+    if not crossover_source.empty:
+        fig, ax_tokens = plt.subplots(figsize=(9, 4.8))
+        token_curve = crossover_source.groupby(["trajectory_length", "arm"], as_index=False).agg(
+            input_tokens=("input_tokens", "mean"),
+            field_accuracy=("field_accuracy", "mean"),
+            page_count=("page_count", "mean"),
+        )
+        sns.lineplot(token_curve, x="trajectory_length", y="input_tokens", hue="arm", marker="o", ax=ax_tokens)
+        ax_tokens.set(title="Reported input-token crossover by context density", xlabel="State transitions in context", ylabel="Mean reported input tokens")
+        ax_tokens.set_xscale("log", base=2)
+        ax_accuracy = ax_tokens.twinx()
+        sns.lineplot(token_curve, x="trajectory_length", y="field_accuracy", hue="arm", marker="s", linestyle="--", legend=False, ax=ax_accuracy)
+        ax_accuracy.set(ylabel="Mean field accuracy", ylim=(0, 1.03))
+        source_profile = "density_sweep" if not density.empty else "primary"
+        crossing = token_crossover.get(source_profile, {}).get("first_jpeg_token_win_length")
+        if crossing:
+            ax_tokens.axvline(crossing, color="#555", linestyle=":", linewidth=1)
+            ax_tokens.text(crossing, ax_tokens.get_ylim()[1] * 0.92, f"JPEG cheaper at {crossing}", rotation=90, va="top", ha="right", fontsize=8)
+        plot_specs.append((fig, "token-crossover-by-density.png"))
     paths = []
     for fig, name in plot_specs:
         fig.tight_layout(); fig.savefig(charts / name, dpi=160); plt.close(fig); paths.append(f"charts/{name}")
     frame.to_csv(run_dir / "summary.csv", index=False)
-    summary = {"observations": len(frame), "profiles": profiles, "charts": paths}
+    summary = {"observations": len(frame), "profiles": profiles, "token_crossover": token_crossover, "charts": paths}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary

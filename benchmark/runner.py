@@ -20,6 +20,7 @@ from .scoring import score_answer
 
 ModelCall = Callable[[list[dict[str, Any]]], dict[str, Any]]
 JPEG_IMAGE_DETAIL = os.getenv("BENCHMARK_IMAGE_DETAIL", "low").lower()
+DENSITY_SWEEP_LENGTHS = (16, 32, 64, 128, 256, 512)
 ANSWER_DISCIPLINE = (
     "Read all context in order before answering. Treat log row numbers as references, not answers, "
     "unless the question explicitly asks for a row number. For current-state questions, later updates "
@@ -115,6 +116,13 @@ class BenchmarkRunner:
                     trajectory = build_trajectory(seed + 90000, 32)
                     arms = counterbalanced_arms(seed_index)
                     work.append(("closed_loop", trajectory, arms))
+            if config.get("density_sweep", False):
+                density_lengths = config.get("density_lengths") or DENSITY_SWEEP_LENGTHS
+                for length_index, length in enumerate(density_lengths):
+                    for seed_index, seed in enumerate(config["seeds"][:2]):
+                        trajectory = build_trajectory(seed + 700000, int(length))
+                        arms = counterbalanced_arms(seed_index + length_index)
+                        work.append(("density_sweep", trajectory, arms))
             total = sum(len(trajectory.probes) * 2 for _, trajectory, _ in work)
             self._set_run(run_id, total_observations=total)
             for profile, trajectory, arms in work:
@@ -160,8 +168,9 @@ class BenchmarkRunner:
 
     def _observe(self, run_id: str, run_dir: Path, trajectory_id: str, profile: str, length: int, arm: str, probe: Probe, feedback: list[str]) -> str:
         context = probe.context + (("\n\nMODEL FEEDBACK\n" + "\n".join(feedback)) if feedback else "")
-        pages = paginate(context)
-        if not verify_render_contract(context):
+        render_profile = "dense" if profile == "density_sweep" else "normal"
+        pages = paginate(context, render_profile)
+        if not verify_render_contract(context, render_profile):
             raise RuntimeError("Pagination changed canonical context content")
         instruction = (
             "Use the supplied context as the complete task record. Answer the question using JSON only, "
@@ -170,7 +179,7 @@ class BenchmarkRunner:
         )
         image_paths: list[Path] = []
         if arm == "jpeg":
-            image_paths = render_pages(pages, run_dir / "pages", f"{trajectory_id}-c{probe.checkpoint}")
+            image_paths = render_pages(pages, run_dir / "pages", f"{trajectory_id}-c{probe.checkpoint}", render_profile)
             content: Any = [{"type": "text", "text": instruction}]
             content.extend({"type": "image_url", "image_url": {"url": data_url(path), "detail": JPEG_IMAGE_DETAIL}} for path in image_paths)
             payload_bytes = len(instruction.encode()) + sum(path.stat().st_size for path in image_paths)
