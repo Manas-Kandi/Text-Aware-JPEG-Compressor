@@ -20,6 +20,10 @@ from .scoring import score_answer
 ModelCall = Callable[[list[dict[str, Any]]], dict[str, Any]]
 
 
+def run_folder(config: dict[str, Any], run_id: str) -> str:
+    return str(config.get("run_folder") or run_id)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -66,7 +70,7 @@ class BenchmarkRunner:
         self._execute(f"UPDATE benchmark_v2_runs SET {assignments} WHERE id=?", tuple(values.values()) + (run_id,))
 
     def _write_manifest(self, run_id: str, config: dict[str, Any]) -> Path:
-        run_dir = self.data_root / run_id
+        run_dir = self.data_root / run_folder(config, run_id)
         run_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
             "schema_version": 2, "run_id": run_id, "created_at": utc_now(),

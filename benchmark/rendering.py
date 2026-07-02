@@ -11,7 +11,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 WIDTH, HEIGHT, FONT_SIZE, JPEG_QUALITY = 750, 1000, 16, 75
 LINES_PER_PAGE = 45
-CHARS_PER_LINE = 82
+CHARS_PER_LINE = 66
+MARGIN_X = 36
 
 
 def paginate(text: str) -> list[str]:
@@ -40,10 +41,10 @@ def render_pages(page_texts: list[str], output_dir: Path, stem: str) -> list[Pat
         if not path.exists():
             image = Image.new("L", (WIDTH, HEIGHT), 252)
             draw = ImageDraw.Draw(image)
-            draw.text((36, 24), f"CONTEXT PAGE {page_index + 1}/{len(page_texts)}", font=font, fill=35)
+            draw.text((MARGIN_X, 24), f"CONTEXT PAGE {page_index + 1}/{len(page_texts)}", font=font, fill=35)
             y = 64
             for line in page_text.splitlines():
-                draw.text((36, y), line, font=font, fill=25)
+                draw.text((MARGIN_X, y), line, font=font, fill=25)
                 y += 20
             image.save(path, "JPEG", quality=JPEG_QUALITY, optimize=True, progressive=True)
         paths.append(path)

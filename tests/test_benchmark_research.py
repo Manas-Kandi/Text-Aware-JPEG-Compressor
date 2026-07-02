@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import server
-from benchmark.rendering import paginate, render_pages, verify_render_contract
+from PIL import Image
+
+from benchmark.rendering import WIDTH, paginate, render_pages, verify_render_contract
 from benchmark.runner import BenchmarkRunner, counterbalanced_arms
 from benchmark.analysis import analyze
 from benchmark.scenarios import DEFAULT_LENGTHS, DEFAULT_SEEDS, PROBE_TYPES, build_trajectory
@@ -43,6 +45,14 @@ class ResearchBenchmarkTest(unittest.TestCase):
         paths = render_pages(pages, self.root / "pages", "contract")
         self.assertEqual(len(paths), len(pages))
         self.assertTrue(all(path.stat().st_size > 0 for path in paths))
+
+    def test_rendered_jpeg_wraps_before_right_edge(self):
+        context = "TASK LOG\n0001 | " + ("Initialize project; " * 10)
+        pages = paginate(context)
+        path = render_pages(pages, self.root / "pages", "right-edge")[0]
+        with Image.open(path) as image:
+            right_edge = image.crop((WIDTH - 8, 0, WIDTH, image.height))
+            self.assertGreater(min(right_edge.getdata()), 230)
 
     def test_scoring_exact_numeric_ordered_and_invalid_json(self):
         self.assertTrue(score_answer('{"answer": 42}', 42)["correct"])

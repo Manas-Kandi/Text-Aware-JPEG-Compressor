@@ -1,0 +1,56 @@
+{
+  "observations": 28,
+  "profiles": {
+    "primary": {
+      "observations": 28,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 78.57,
+          "probe_accuracy": 78.57,
+          "trajectory_success": 25.0,
+          "degradation_per_transition": -1.0417,
+          "median_latency_ms": 1174,
+          "input_tokens": 16748,
+          "output_tokens": 233,
+          "payload_bytes": 668492,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            68.75,
+            92.76
+          ]
+        },
+        "text": {
+          "field_accuracy": 92.86,
+          "probe_accuracy": 92.86,
+          "trajectory_success": 75.0,
+          "degradation_per_transition": -1.5625,
+          "median_latency_ms": 884,
+          "input_tokens": 3073,
+          "output_tokens": 225,
+          "payload_bytes": 12008,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            81.25,
+            100.0
+          ]
+        }
+      },
+      "comparable_model": true
+    }
+  },
+  "charts": [
+    "charts/accuracy-by-length.png",
+    "charts/accuracy-by-probe.png",
+    "charts/survival-by-depth.png",
+    "charts/efficiency.png",
+    "charts/capacity-and-cost.png"
+  ]
+}
