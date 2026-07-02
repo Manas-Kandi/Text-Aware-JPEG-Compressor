@@ -144,6 +144,12 @@ class ResearchBenchmarkTest(unittest.TestCase):
         public = server.benchmark_public(final)
         self.assertEqual(public["run_folder"], "run A")
         self.assertIn("/benchmark-runs/run%20A/manifest.json", [item["url"] for item in public["artifacts"]])
+        log = server.benchmark_diagnostic_log(run_id)
+        self.assertIn("PIEDPIPER JPEG CONTEXT DIAGNOSTIC LOG", log)
+        self.assertIn("- folder: run A", log)
+        self.assertIn("PRIMARY SUMMARY", log)
+        self.assertIn("JPEG FAILURES", log)
+        self.assertIn("prompt=", log)
 
     def test_transcript_endpoints_rebuild_verified_context(self):
         run_id = uuid.uuid4().hex
