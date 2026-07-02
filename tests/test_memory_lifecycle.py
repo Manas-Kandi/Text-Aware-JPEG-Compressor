@@ -88,6 +88,7 @@ class MemoryLifecycleTest(unittest.TestCase):
             content = model_chat.call_args.args[1][0]["content"]
             image_count = sum(1 for item in content if item["type"] == "image_url")
             self.assertEqual(image_count, server.MAX_VISION_RECALL_IMAGES)
+            self.assertTrue(all(item["image_url"]["detail"] == "low" for item in content if item["type"] == "image_url"))
             self.assertIn("TEXT RETRIEVAL BRIEF", content[0]["text"])
             self.assertIn("IMAGE 1:", content[0]["text"])
             self.assertIn("Cite IMAGE numbers", content[0]["text"])

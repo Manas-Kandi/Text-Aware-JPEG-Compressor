@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import sqlite3
 import threading
 import time
@@ -18,6 +19,14 @@ from .scoring import score_answer
 
 
 ModelCall = Callable[[list[dict[str, Any]]], dict[str, Any]]
+JPEG_IMAGE_DETAIL = os.getenv("BENCHMARK_IMAGE_DETAIL", "low").lower()
+ANSWER_DISCIPLINE = (
+    "Read all context in order before answering. Treat log row numbers as references, not answers, "
+    "unless the question explicitly asks for a row number. For current-state questions, later updates "
+    "override earlier values. For multi-hop questions, resolve each relationship step. For arithmetic, "
+    "apply every relevant numeric update. For next-action questions, return the milestone or action name, "
+    "not the copied log line."
+)
 
 
 def run_folder(config: dict[str, Any], run_id: str) -> str:
@@ -156,13 +165,14 @@ class BenchmarkRunner:
             raise RuntimeError("Pagination changed canonical context content")
         instruction = (
             "Use the supplied context as the complete task record. Answer the question using JSON only, "
-            "with exactly one key named answer. Do not explain.\nQUESTION\n" + probe.prompt
+            "with exactly one key named answer. Do not explain.\n\nANSWER DISCIPLINE\n"
+            + ANSWER_DISCIPLINE + "\n\nQUESTION\n" + probe.prompt
         )
         image_paths: list[Path] = []
         if arm == "jpeg":
             image_paths = render_pages(pages, run_dir / "pages", f"{trajectory_id}-c{probe.checkpoint}")
             content: Any = [{"type": "text", "text": instruction}]
-            content.extend({"type": "image_url", "image_url": {"url": data_url(path)}} for path in image_paths)
+            content.extend({"type": "image_url", "image_url": {"url": data_url(path), "detail": JPEG_IMAGE_DETAIL}} for path in image_paths)
             payload_bytes = len(instruction.encode()) + sum(path.stat().st_size for path in image_paths)
         else:
             page_text = "\n\n".join(f"--- CONTEXT PAGE {index + 1}/{len(pages)} ---\n{page}" for index, page in enumerate(pages))
@@ -217,7 +227,7 @@ class BenchmarkRunner:
         return "\n".join([
             "# JPEG Context Benchmark Report", "", "## Configuration", "",
             f"- Model: `{config['model']}`", f"- Lengths: {config['lengths']}", f"- Seeds: {config['seeds']}",
-            "- Rendering: 750×1000 grayscale JPEG, 16 px text, quality 75", "",
+            f"- Rendering: 750×1000 grayscale JPEG, 16 px text, quality 75, image detail `{JPEG_IMAGE_DETAIL}`", "",
             "## Results", "", "```json", json.dumps(summary, indent=2), "```", "",
             "## Interpretation", "", "This pilot estimates paired effects and variance. It does not establish model-independent superiority of either representation.",
         ]) + "\n"

@@ -137,6 +137,10 @@ class ResearchBenchmarkTest(unittest.TestCase):
             runner.run(run_id)
         self.assertEqual(count, 10)
         self.assertEqual(len(calls), 10)
+        jpeg_content = calls[0][0]["content"]
+        self.assertIn("ANSWER DISCIPLINE", jpeg_content[0]["text"])
+        self.assertIn("Treat log row numbers as references", jpeg_content[0]["text"])
+        self.assertEqual(jpeg_content[1]["image_url"]["detail"], "low")
         final = server.rows("SELECT * FROM benchmark_v2_runs WHERE id=?", (run_id,))[0]
         self.assertEqual(final["status"], "complete")
         self.assertEqual(final["completed_observations"], 10)

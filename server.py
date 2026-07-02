@@ -79,6 +79,7 @@ ENABLE_VISION_RECALL = os.getenv("ENABLE_VISION_RECALL", "true").lower() == "tru
 DECAY_HOURS = max(1, int(os.getenv("DECAY_INTERVAL_HOURS", "24")))
 MAX_RETRIEVED = max(1, min(6, int(os.getenv("MAX_RETRIEVED_MEMORIES", "3"))))
 MAX_VISION_RECALL_IMAGES = max(1, min(MAX_RETRIEVED, int(os.getenv("MAX_VISION_RECALL_IMAGES", "2"))))
+VISION_RECALL_IMAGE_DETAIL = os.getenv("VISION_RECALL_IMAGE_DETAIL", "low").lower()
 
 DB_LOCK = threading.Lock()
 LOGGER = logging.getLogger("piper")
@@ -768,7 +769,7 @@ def recall_from_images(memories: list[dict[str, Any]], query: str) -> str:
     }]
     for index, memory in enumerate(visual_memories, 1):
         content.append({"type": "text", "text": f"IMAGE {index}: {memory['label']}"})
-        content.append({"type": "image_url", "image_url": {"url": image_data_url(memory["image_url"])}})
+        content.append({"type": "image_url", "image_url": {"url": image_data_url(memory["image_url"]), "detail": VISION_RECALL_IMAGE_DETAIL}})
     try:
         return model_chat(VISION_MODEL, [{"role": "user", "content": content}], 900)
     except Exception:
