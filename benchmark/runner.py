@@ -20,7 +20,7 @@ from .scoring import score_answer
 
 ModelCall = Callable[[list[dict[str, Any]]], dict[str, Any]]
 JPEG_IMAGE_DETAIL = os.getenv("BENCHMARK_IMAGE_DETAIL", "low").lower()
-DENSITY_SWEEP_LENGTHS = (16, 32, 64, 128, 256, 512)
+DENSITY_SWEEP_LENGTHS = (128, 256, 512, 1024, 2048)
 ANSWER_DISCIPLINE = (
     "Read all context in order before answering. Treat log row numbers as references, not answers, "
     "unless the question explicitly asks for a row number. For current-state questions, later updates "

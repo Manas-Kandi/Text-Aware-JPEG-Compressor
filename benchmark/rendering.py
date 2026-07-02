@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 WIDTH, HEIGHT, JPEG_QUALITY = 750, 1000, 75
 RENDER_PROFILES = {
     "normal": {"font_size": 16, "lines_per_page": 45, "chars_per_line": 66, "line_height": 20},
-    "dense": {"font_size": 12, "lines_per_page": 68, "chars_per_line": 92, "line_height": 13},
+    "dense": {"font_size": 8, "lines_per_page": 112, "chars_per_line": 128, "line_height": 8},
 }
 MARGIN_X = 36
 

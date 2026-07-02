@@ -209,7 +209,7 @@ class ResearchBenchmarkTest(unittest.TestCase):
         self.assertEqual(summary["profiles"]["primary"]["tradeoff"]["input_tokens_saved"], 0)
         self.assertEqual(summary["profiles"]["primary"]["tradeoff"]["accuracy_delta_points"], -25.0)
         self.assertEqual(summary["token_crossover"]["primary"]["first_jpeg_token_win_length"], 16)
-        self.assertEqual(len(summary["charts"]), 6)
+        self.assertEqual(len(summary["charts"]), 3)
         self.assertTrue((output / "summary.csv").exists())
         self.assertTrue(all((output / path).exists() for path in summary["charts"]))
 

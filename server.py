@@ -226,9 +226,9 @@ class BenchmarkRequest(BaseModel):
             raise ValueError("lengths must contain one to four values between 4 and 128")
         if not seeds or len(seeds) > 5:
             raise ValueError("seeds must contain one to five values")
-        density_lengths = sorted(set(self.density_lengths or [16, 32, 64, 128, 256, 512]))
-        if self.density_sweep and (len(density_lengths) > 6 or any(length < 8 or length > 512 for length in density_lengths)):
-            raise ValueError("density_lengths must contain up to six values between 8 and 512")
+        density_lengths = sorted(set(self.density_lengths or [128, 256, 512, 1024, 2048]))
+        if self.density_sweep and (len(density_lengths) > 5 or any(length < 64 or length > 2048 for length in density_lengths)):
+            raise ValueError("density_lengths must contain up to five values between 64 and 2048")
         return {
             "model": self.model or default_benchmark_model(),
             "lengths": lengths,

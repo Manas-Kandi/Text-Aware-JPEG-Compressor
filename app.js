@@ -6,7 +6,7 @@ const THEME_KEY = 'piper-theme';
 const PRESETS = {
   quick: { lengths: [8, 16], seeds: [1103, 2207] },
   full: { lengths: [16, 32, 64, 128], seeds: [1103, 2207, 3301, 4409, 5519] },
-  density: { lengths: [16], seeds: [1103], density_sweep: true, density_lengths: [16, 32, 64, 128, 256, 512] },
+  density: { lengths: [16], seeds: [1103], density_sweep: true, density_lengths: [128, 256, 512, 1024, 2048] },
 };
 const PHASE_LABELS = {
   queued: 'waiting in queue', preparing: 'building trajectories', jpeg: 'jpeg arm',
