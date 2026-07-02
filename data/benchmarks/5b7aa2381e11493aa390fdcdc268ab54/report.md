@@ -1,0 +1,117 @@
+# JPEG Context Benchmark Report
+
+## Configuration
+
+- Model: `openai/gpt-5-nano-2025-08-07`
+- Lengths: [8, 16]
+- Seeds: [1103, 2207]
+- Rendering: 750×1000 grayscale JPEG, 16 px text, quality 75
+
+## Results
+
+```json
+{
+  "observations": 44,
+  "profiles": {
+    "closed_loop": {
+      "observations": 16,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 25.0,
+          "probe_accuracy": 25.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 1354,
+          "input_tokens": 9569,
+          "output_tokens": 131,
+          "payload_bytes": 755101,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            25.0,
+            25.0
+          ]
+        },
+        "text": {
+          "field_accuracy": 87.5,
+          "probe_accuracy": 87.5,
+          "trajectory_success": 50.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 964,
+          "input_tokens": 3142,
+          "output_tokens": 127,
+          "payload_bytes": 12620,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            75.0,
+            100.0
+          ]
+        }
+      },
+      "comparable_model": true
+    },
+    "primary": {
+      "observations": 28,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 42.86,
+          "probe_accuracy": 42.86,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": -1.5625,
+          "median_latency_ms": 1092,
+          "input_tokens": 16748,
+          "output_tokens": 235,
+          "payload_bytes": 635716,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            29.17,
+            58.33
+          ]
+        },
+        "text": {
+          "field_accuracy": 92.86,
+          "probe_accuracy": 92.86,
+          "trajectory_success": 75.0,
+          "degradation_per_transition": -1.5625,
+          "median_latency_ms": 881,
+          "input_tokens": 3022,
+          "output_tokens": 215,
+          "payload_bytes": 11957,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            81.25,
+            100.0
+          ]
+        }
+      },
+      "comparable_model": true
+    }
+  },
+  "charts": [
+    "charts/accuracy-by-length.png",
+    "charts/accuracy-by-probe.png",
+    "charts/survival-by-depth.png",
+    "charts/efficiency.png",
+    "charts/capacity-and-cost.png"
+  ]
+}
+```
+
+## Interpretation
+
+This pilot estimates paired effects and variance. It does not establish model-independent superiority of either representation.
