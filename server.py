@@ -63,6 +63,11 @@ ROUTER_MODEL = os.getenv("ROUTER_MODEL", "openrouter/free")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").rstrip("/")
 
+# Direct OpenAI. When a key is set, any openai/... model id skips the router
+# and calls OpenAI itself.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+
 DEFAULT_MODEL = ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "nvidia/nemotron-3-ultra-550b-a55b"
 MAIN_MODEL = os.getenv("MAIN_MODEL", DEFAULT_MODEL)
 VISION_MODEL = os.getenv("VISION_MODEL", ROUTER_MODEL if MODEL_PROVIDER == "openrouter" else "moonshotai/kimi-k2.6")
@@ -264,6 +269,33 @@ def active_api_key() -> str:
     return OPENROUTER_API_KEY if MODEL_PROVIDER == "openrouter" else NVIDIA_API_KEY
 
 
+def resolve_route(model: str) -> tuple[str, str]:
+    """Which API a model id goes to. openai/... and bare ids go straight to OpenAI when we have a key."""
+    if OPENAI_API_KEY:
+        if model.startswith("openai/"):
+            return "openai", model.split("/", 1)[1]
+        if "/" not in model:
+            return "openai", model
+    return MODEL_PROVIDER, model
+
+
+def openai_reasoning_model(name: str) -> bool:
+    return name.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
+def qualify_model(model: str) -> str:
+    """Bare ids like gpt-5-nano-2025-08-07 get the openai/ prefix so pinning stays explicit."""
+    model = model.strip()
+    if OPENAI_API_KEY and model and "/" not in model:
+        return f"openai/{model}"
+    return model
+
+
+def has_key_for(model: str) -> bool:
+    provider, _ = resolve_route(model)
+    return bool(OPENAI_API_KEY if provider == "openai" else active_api_key())
+
+
 def model_chat(
     model: str,
     messages: list[dict[str, Any]],
@@ -273,11 +305,12 @@ def model_chat(
     with_metadata: bool = False,
     temperature: float = 0.35,
 ) -> Any:
-    api_key = active_api_key()
+    provider, provider_model = resolve_route(model)
+    api_key = OPENAI_API_KEY if provider == "openai" else active_api_key()
     if not api_key:
-        raise RuntimeError(f"{MODEL_PROVIDER.upper()} API key is not configured")
+        raise RuntimeError(f"{provider.upper()} API key is not configured")
     payload: dict[str, Any] = {
-        "model": model,
+        "model": provider_model,
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.9,
@@ -286,13 +319,24 @@ def model_chat(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    if MODEL_PROVIDER == "openrouter" and thinking and OPENROUTER_REASONING:
-        payload["reasoning"] = {"effort": "medium"}
-    elif thinking and model.startswith("nvidia/nemotron"):
-        payload["chat_template_kwargs"] = {"enable_thinking": True}
-        payload["reasoning_budget"] = min(4096, max_tokens * 2)
-
-    if MODEL_PROVIDER == "openrouter":
+    if provider == "openai":
+        # OpenAI wants max_completion_tokens. GPT-5 and o-series also refuse pinned
+        # temperature/top_p and spend part of the budget on reasoning tokens, so give headroom.
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        if openai_reasoning_model(provider_model):
+            payload.pop("temperature", None)
+            payload.pop("top_p", None)
+            payload["reasoning_effort"] = "medium" if thinking else "minimal"
+            payload["max_completion_tokens"] += 512
+        endpoint = f"{OPENAI_BASE_URL}/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    elif provider == "openrouter":
+        # Reasoning models spend hidden tokens before answering; without headroom
+        # a small max_tokens yields an empty answer.
+        if openai_reasoning_model(provider_model.split("/", 1)[-1]):
+            payload["max_tokens"] += 512
+        if thinking and OPENROUTER_REASONING:
+            payload["reasoning"] = {"effort": "medium"}
         endpoint = f"{OPENROUTER_BASE_URL}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -301,9 +345,12 @@ def model_chat(
             "X-Title": OPENROUTER_APP_TITLE,
         }
     else:
+        if thinking and provider_model.startswith("nvidia/nemotron"):
+            payload["chat_template_kwargs"] = {"enable_thinking": True}
+            payload["reasoning_budget"] = min(4096, max_tokens * 2)
         endpoint = f"{NVIDIA_BASE_URL}/chat/completions"
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    attempts = 3 if MODEL_PROVIDER == "openrouter" and model == "openrouter/free" else 1
+    attempts = 3 if provider == "openrouter" and model == "openrouter/free" else 1
     last_error = "The model returned no usable response."
     for attempt in range(attempts):
         attempt_payload = dict(payload)
@@ -326,7 +373,7 @@ def model_chat(
                 error_message = str(error_data.get("message") or response.text)[:300]
             except (ValueError, AttributeError):
                 error_message = response.text[:300]
-            last_error = f"{MODEL_PROVIDER.title()} API {response.status_code}: {error_message}"
+            last_error = f"{provider.title()} API {response.status_code}: {error_message}"
             if response.status_code in {408, 409, 429, 500, 502, 503, 504} and attempt + 1 < attempts:
                 time.sleep(0.65 * (attempt + 1))
                 continue
@@ -344,10 +391,13 @@ def model_chat(
             content = str(content).strip()
             if content:
                 if with_metadata:
+                    resolved_model = str(data.get("model") or provider_model)
+                    if provider == "openai" and not resolved_model.startswith("openai/"):
+                        resolved_model = f"openai/{resolved_model}"
                     return {
                         "content": content,
-                        "model": str(data.get("model") or model),
-                        "provider": str(data.get("provider") or MODEL_PROVIDER),
+                        "model": resolved_model,
+                        "provider": str(data.get("provider") or provider),
                         "usage": data.get("usage") or {},
                         "cost": (data.get("usage") or {}).get("cost") or data.get("cost") or 0,
                     }
@@ -836,11 +886,9 @@ def benchmark_model_call(model: str, messages: list[dict[str, Any]]) -> dict[str
 VISION_MODEL_CACHE: dict[str, Any] = {"at": 0.0, "models": []}
 
 
-def list_vision_models() -> list[dict[str, Any]]:
+def openrouter_vision_models() -> list[dict[str, Any]]:
     if MODEL_PROVIDER != "openrouter":
         return []
-    if VISION_MODEL_CACHE["models"] and time.time() - VISION_MODEL_CACHE["at"] < 600:
-        return VISION_MODEL_CACHE["models"]
     response = requests.get(f"{OPENROUTER_BASE_URL}/models", timeout=20)
     response.raise_for_status()
     models: list[dict[str, Any]] = []
@@ -859,8 +907,41 @@ def list_vision_models() -> list[dict[str, Any]]:
             "free": free,
             "context_length": int(item.get("context_length") or 0),
         })
-    models = [model for model in models if model["id"] and not is_router_alias(model["id"])]
-    models.sort(key=lambda model: (not model["free"], model["name"].lower()))
+    return [model for model in models if model["id"] and not is_router_alias(model["id"])]
+
+
+def openai_direct_vision_models() -> list[dict[str, Any]]:
+    """Vision-capable chat models on the user's own OpenAI account."""
+    if not OPENAI_API_KEY:
+        return []
+    response = requests.get(f"{OPENAI_BASE_URL}/models", headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}, timeout=20)
+    response.raise_for_status()
+    excluded = ("audio", "realtime", "tts", "transcribe", "image", "embedding", "moderation", "search", "codex")
+    models: list[dict[str, Any]] = []
+    for item in response.json().get("data") or []:
+        model_id = str(item.get("id") or "")
+        if not model_id.startswith(("gpt-5", "gpt-4o", "gpt-4.1")) or any(term in model_id for term in excluded):
+            continue
+        # OpenAI's models endpoint does not report context windows; these are rough family sizes.
+        context = 400000 if model_id.startswith("gpt-5") else 1000000 if model_id.startswith("gpt-4.1") else 128000
+        models.append({"id": f"openai/{model_id}", "name": f"OpenAI {model_id} (direct)", "free": False, "context_length": context})
+    return models
+
+
+def list_vision_models() -> list[dict[str, Any]]:
+    if VISION_MODEL_CACHE["models"] and time.time() - VISION_MODEL_CACHE["at"] < 600:
+        return VISION_MODEL_CACHE["models"]
+    merged: dict[str, dict[str, Any]] = {}
+    errors: list[Exception] = []
+    for source in (openrouter_vision_models, openai_direct_vision_models):
+        try:
+            for model in source():
+                merged[model["id"]] = model
+        except Exception as error:
+            errors.append(error)
+    if not merged and errors:
+        raise errors[0]
+    models = sorted(merged.values(), key=lambda model: (not model["free"], model["name"].lower()))
     VISION_MODEL_CACHE.update(at=time.time(), models=models)
     return models
 
@@ -963,10 +1044,11 @@ def latest_research_benchmark() -> dict[str, Any] | None:
 
 
 def submit_research_benchmark(config: dict[str, Any], run_id: str | None = None) -> dict[str, Any]:
-    model = str(config["model"])
+    model = qualify_model(str(config["model"]))
+    config = {**config, "model": model}
     validate_benchmark_model(model)
-    if not active_api_key():
-        raise ValueError("No API key. Add OPENROUTER_API_KEY to .env, then run the test.")
+    if not has_key_for(model):
+        raise ValueError(f"No API key for {model}. Add the right key to .env, then run the test.")
     run_id = run_id or uuid.uuid4().hex
     timestamp = now_iso()
     existing = rows("SELECT id FROM benchmark_v2_runs WHERE id=?", (run_id,))

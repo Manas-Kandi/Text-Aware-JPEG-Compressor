@@ -74,6 +74,17 @@ The playground is a demo of the idea. The Experiment tab is the evidence.
 - `MEMORY_MODEL` — labels finished work. May use `openrouter/free`.
 - `BENCHMARK_MODEL` — the pinned model for research runs. No aliases.
 
+## Direct OpenAI
+
+Set `OPENAI_API_KEY` in `.env` to call OpenAI with your own key. Then any `openai/...` model id
+skips the router and calls OpenAI itself. Bare ids like `gpt-5-nano-2025-08-07` get the
+`openai/` prefix for you. Your account's vision models show up in the picker too.
+
+GPT-5 and o-series models have quirks. They refuse a pinned temperature, so those runs use the
+provider default instead of zero. The report records the exact model either way. They also spend
+tokens on hidden reasoning, so the app grants extra completion headroom and asks for minimal
+reasoning effort during benchmark runs.
+
 ## Safety
 
 The agent only touches local tasks, notes, and markdown files. It runs no shell commands,
