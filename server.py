@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import ast
 import base64
+import hashlib
 import json
 import logging
 import math
 import os
 import re
 import sqlite3
-import textwrap
 import threading
 import time
 import uuid
@@ -25,14 +24,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from benchmark.runner import BenchmarkRunner
+from benchmark.scenarios import DEFAULT_LENGTHS, DEFAULT_SEEDS, build_trajectory
+
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 IMAGES = DATA / "memory_images"
 BENCHMARK_IMAGES = DATA / "benchmark_images"
+BENCHMARK_RUNS = DATA / "benchmarks"
 ARTIFACTS = DATA / "artifacts"
 DB_PATH = DATA / "agent.db"
-for directory in (DATA, IMAGES, BENCHMARK_IMAGES, ARTIFACTS):
+for directory in (DATA, IMAGES, BENCHMARK_IMAGES, BENCHMARK_RUNS, ARTIFACTS):
     directory.mkdir(parents=True, exist_ok=True)
 
 
@@ -120,19 +123,47 @@ def init_db() -> None:
                   FOREIGN KEY(source_id) REFERENCES memories(id) ON DELETE CASCADE,
                   FOREIGN KEY(target_id) REFERENCES memories(id) ON DELETE CASCADE
                 );
-                CREATE TABLE IF NOT EXISTS benchmark_runs (
-                  id TEXT PRIMARY KEY, created_at TEXT NOT NULL, status TEXT NOT NULL,
-                  scenarios INTEGER NOT NULL, depth INTEGER NOT NULL,
-                  summary TEXT NOT NULL DEFAULT '{}'
+                CREATE TABLE IF NOT EXISTS benchmark_v2_runs (
+                  id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                  status TEXT NOT NULL, phase TEXT NOT NULL, config TEXT NOT NULL,
+                  summary TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '',
+                  cancel_requested INTEGER NOT NULL DEFAULT 0,
+                  total_observations INTEGER NOT NULL DEFAULT 0,
+                  completed_observations INTEGER NOT NULL DEFAULT 0
                 );
-                CREATE TABLE IF NOT EXISTS benchmark_steps (
-                  id TEXT PRIMARY KEY, run_id TEXT NOT NULL, arm TEXT NOT NULL,
-                  scenario INTEGER NOT NULL, step INTEGER NOT NULL,
-                  prompt TEXT NOT NULL, expected TEXT NOT NULL, answer TEXT NOT NULL,
-                  correct INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
-                  input_tokens INTEGER NOT NULL, memory_bytes INTEGER NOT NULL,
-                  routed_model TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
-                  FOREIGN KEY(run_id) REFERENCES benchmark_runs(id) ON DELETE CASCADE
+                CREATE TABLE IF NOT EXISTS benchmark_v2_trajectories (
+                  run_id TEXT NOT NULL, id TEXT NOT NULL, profile TEXT NOT NULL,
+                  seed INTEGER NOT NULL, length INTEGER NOT NULL, arms_order TEXT NOT NULL,
+                  created_at TEXT NOT NULL, PRIMARY KEY(run_id,id),
+                  FOREIGN KEY(run_id) REFERENCES benchmark_v2_runs(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_v2_observations (
+                  id TEXT PRIMARY KEY, run_id TEXT NOT NULL, trajectory_id TEXT NOT NULL,
+                  profile TEXT NOT NULL, arm TEXT NOT NULL, trajectory_length INTEGER NOT NULL,
+                  checkpoint INTEGER NOT NULL, probe_type TEXT NOT NULL, prompt TEXT NOT NULL,
+                  expected TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '',
+                  correct INTEGER NOT NULL DEFAULT 0, fields_correct INTEGER NOT NULL DEFAULT 0,
+                  fields_total INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL,
+                  context_hash TEXT NOT NULL, latency_ms INTEGER NOT NULL DEFAULT 0,
+                  input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+                  cost REAL NOT NULL DEFAULT 0, payload_bytes INTEGER NOT NULL DEFAULT 0,
+                  page_count INTEGER NOT NULL DEFAULT 0, resolved_model TEXT NOT NULL DEFAULT '',
+                  provider TEXT NOT NULL DEFAULT '', attempt_count INTEGER NOT NULL DEFAULT 0,
+                  error_type TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT '',
+                  UNIQUE(run_id,trajectory_id,arm,checkpoint),
+                  FOREIGN KEY(run_id) REFERENCES benchmark_v2_runs(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_v2_attempts (
+                  id TEXT PRIMARY KEY, observation_id TEXT NOT NULL, attempt INTEGER NOT NULL,
+                  status TEXT NOT NULL, latency_ms INTEGER NOT NULL, error TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  FOREIGN KEY(observation_id) REFERENCES benchmark_v2_observations(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS benchmark_v2_artifacts (
+                  run_id TEXT NOT NULL, path TEXT NOT NULL, size INTEGER NOT NULL,
+                  created_at TEXT NOT NULL, PRIMARY KEY(run_id,path),
+                  FOREIGN KEY(run_id) REFERENCES benchmark_v2_runs(id) ON DELETE CASCADE
                 );
                 """
             )
@@ -173,8 +204,19 @@ class NoteRequest(BaseModel):
 
 
 class BenchmarkRequest(BaseModel):
-    scenarios: int = Field(default=2, ge=1, le=5)
-    depth: int = Field(default=6, ge=3, le=8)
+    model: str | None = Field(default=None, max_length=200)
+    lengths: list[int] = Field(default_factory=lambda: list(DEFAULT_LENGTHS))
+    seeds: list[int] = Field(default_factory=lambda: list(DEFAULT_SEEDS))
+    closed_loop: bool = True
+
+    def normalized(self) -> dict[str, Any]:
+        lengths = sorted(set(self.lengths))
+        seeds = list(dict.fromkeys(self.seeds))
+        if not lengths or len(lengths) > 4 or any(length < 4 or length > 128 for length in lengths):
+            raise ValueError("lengths must contain one to four values between 4 and 128")
+        if not seeds or len(seeds) > 5:
+            raise ValueError("seeds must contain one to five values")
+        return {"model": self.model or default_benchmark_model(), "lengths": lengths, "seeds": seeds, "closed_loop": self.closed_loop}
 
 
 app = FastAPI(title="Piper Agent", version="0.1.0")
@@ -187,6 +229,7 @@ app.add_middleware(
 )
 app.mount("/memory-images", StaticFiles(directory=IMAGES), name="memory-images")
 app.mount("/benchmark-images", StaticFiles(directory=BENCHMARK_IMAGES), name="benchmark-images")
+app.mount("/benchmark-runs", StaticFiles(directory=BENCHMARK_RUNS), name="benchmark-runs")
 app.mount("/artifacts", StaticFiles(directory=ARTIFACTS), name="artifacts")
 
 
@@ -228,6 +271,7 @@ def model_chat(
     thinking: bool = False,
     json_mode: bool = False,
     with_metadata: bool = False,
+    temperature: float = 0.35,
 ) -> Any:
     api_key = active_api_key()
     if not api_key:
@@ -235,7 +279,7 @@ def model_chat(
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": 0.35,
+        "temperature": temperature,
         "top_p": 0.9,
         "max_tokens": max_tokens,
         "stream": False,
@@ -305,6 +349,7 @@ def model_chat(
                         "model": str(data.get("model") or model),
                         "provider": str(data.get("provider") or MODEL_PROVIDER),
                         "usage": data.get("usage") or {},
+                        "cost": (data.get("usage") or {}).get("cost") or data.get("cost") or 0,
                     }
                 return content
             last_error = "The routed model returned an empty final answer."
@@ -672,7 +717,7 @@ def mock_plan(message: str) -> dict[str, Any]:
         actions.append({"type": "create_task", "title": title, "details": "Created from chat"})
     if "save" in lowered and "note" in lowered:
         actions.append({"type": "save_note", "title": safe_label(message), "content": message})
-    reply = "I’m running in local demo mode. I can still manage the task and memory graph; add NVIDIA_API_KEY to .env for model-generated replies."
+    reply = "I’m running in local demo mode. I can still manage the task and memory graph; add OPENROUTER_API_KEY to .env for model-generated replies."
     if actions:
         reply = "I prepared the requested local action."
     return {"reply": reply, "actions": actions, "memory": {"summary": message[:800]}}
@@ -746,166 +791,207 @@ def execute_actions(actions: list[dict[str, Any]]) -> list[str]:
     return results
 
 
-def benchmark_scenario(index: int, depth: int) -> tuple[str, list[dict[str, Any]]]:
-    codes = ["Cedar", "Quartz", "Nimbus", "Lumen", "Atlas"]
-    leads = ["Mira", "Soren", "Anika", "Theo", "Priya"]
-    replacements = ["Ivo", "Nadia", "Elian", "Zara", "Omar"]
-    regions = ["Oslo", "Lima", "Kyoto", "Accra", "Riga"]
-    new_regions = ["Tallinn", "Quito", "Busan", "Dakar", "Bern"]
-    risks = ["cobalt", "willow", "ember", "tundra", "harbor"]
-    code, lead = codes[index], leads[index]
-    replacement, region = replacements[index], regions[index]
-    new_region, risk = new_regions[index], risks[index]
-    budget, week, reduction = 84 + index * 7, 37 + index, 9 + index
-    reduced, final_budget = budget - reduction, budget - reduction + 13
-    access_phrase = f"{risk}-{index + 7}"
-    initial = (
-        f"Project record: code name {code}; lead {lead}; budget {budget} units; "
-        f"launch week {week}; region {region}; access phrase {access_phrase}."
-    )
-    steps = [
-        {"prompt": "What is the project code name? Answer with only the value.", "expected": [code]},
-        {"prompt": f"The budget is reduced by {reduction} units. What is the new budget? Answer with only the number.", "expected": [str(reduced)]},
-        {"prompt": f"The project lead changes to {replacement}. Who is the lead now? Answer with only the name.", "expected": [replacement]},
-        {"prompt": f"Record risk keyword {risk}. What risk keyword was just recorded? Answer with only the keyword.", "expected": [risk]},
-        {"prompt": f"The operating region changes from {region} to {new_region}. What is the current region? Answer only the value.", "expected": [new_region]},
-        {"prompt": "Add 13 units to the current reduced budget. What is the budget now? Answer with only the number.", "expected": [str(final_budget)]},
-        {"prompt": "Return the current code name, lead, and budget in that order, separated by commas.", "expected": [code, replacement, str(final_budget)]},
-        {"prompt": "What was the original access phrase from the project record? Answer only the phrase.", "expected": [access_phrase]},
-    ]
-    return initial, steps[:depth]
+BENCHMARK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="piper-research")
+BENCHMARK_FUTURES: dict[str, Any] = {}
+BENCHMARK_FUTURES_LOCK = threading.Lock()
 
 
-def benchmark_correct(answer: str, expected: list[str]) -> bool:
-    normalized_answer = re.sub(r"[^a-z0-9]+", " ", answer.lower()).strip()
-    padded = f" {normalized_answer} "
-    return all(f" {re.sub(r'[^a-z0-9]+', ' ', value.lower()).strip()} " in padded for value in expected)
+ROUTER_ALIASES = {"openrouter/free", "openrouter/auto", "auto", "router", "nvidia/auto"}
 
 
-def render_benchmark_frame(run_id: str, scenario: int, step: int, memory: str) -> Path:
-    canvas = Image.new("L", (750, 1000), 252)
-    draw = ImageDraw.Draw(canvas)
-    heading, body, mono = font(27, True), font(16), font(13)
-    draw.rectangle((0, 0, 750, 92), fill=236)
-    draw.text((38, 25), "SEQUENTIAL WORKING MEMORY", font=heading, fill=24)
-    draw.text((40, 62), f"SCENARIO {scenario + 1}  /  STEP {step + 1}", font=mono, fill=105)
-    y = 122
-    for line in wrap_pixels(draw, memory, body, 674):
-        if y > 938:
-            draw.text((38, y), "…", font=body, fill=28)
-            break
-        draw.text((38, y), line, font=body, fill=28)
-        y += 23
-    path = BENCHMARK_IMAGES / f"{run_id}-{scenario}-{step}.jpg"
-    canvas.save(path, "JPEG", quality=18, optimize=True, progressive=True)
-    return path
+def is_router_alias(model: str) -> bool:
+    normalized = model.strip().lower()
+    return not normalized or "/" not in normalized or normalized in ROUTER_ALIASES
 
 
-def run_benchmark_arm(run_id: str, arm: str, scenarios: int, depth: int) -> None:
-    for scenario_index in range(scenarios):
-        memory, task_steps = benchmark_scenario(scenario_index, depth)
-        for step_index, task in enumerate(task_steps):
-            image_path: Path | None = None
-            if arm == "visual":
-                image_path = render_benchmark_frame(run_id, scenario_index, step_index, memory)
-                image_url = "data:image/jpeg;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
-                content: Any = [
-                    {"type": "text", "text": "Use the image as the complete working memory. " + task["prompt"]},
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                ]
-                memory_bytes = image_path.stat().st_size
-                estimated_tokens = round(750 * 1000 / 758) + len(task["prompt"]) // 4
-            else:
-                content = f"WORKING MEMORY\n{memory}\n\nTASK\n{task['prompt']}"
-                memory_bytes = len(memory.encode("utf-8"))
-                estimated_tokens = len(content) // 4
-
-            started = time.perf_counter()
-            answer, routed_model, input_tokens, error = "", BENCHMARK_MODEL, estimated_tokens, ""
-            try:
-                result = model_chat(
-                    BENCHMARK_MODEL,
-                    [{"role": "user", "content": content}],
-                    max_tokens=160,
-                    thinking=False,
-                    with_metadata=True,
-                )
-                answer = result["content"]
-                routed_model = result["model"]
-                usage = result.get("usage") or {}
-                input_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or estimated_tokens)
-            except Exception as exc:
-                error = str(exc)[:500]
-            latency_ms = round((time.perf_counter() - started) * 1000)
-            correct = bool(answer) and benchmark_correct(answer, task["expected"])
-            execute(
-                "INSERT INTO benchmark_steps VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    uuid.uuid4().hex, run_id, arm, scenario_index, step_index,
-                    task["prompt"], " | ".join(task["expected"]), answer,
-                    int(correct), latency_ms, input_tokens, memory_bytes, routed_model, error,
-                ),
-            )
-            memory += f"\nStep {step_index + 1} task: {task['prompt']}\nStep {step_index + 1} answer: {answer or '[no answer]'}"
+def validate_benchmark_model(model: str) -> None:
+    if is_router_alias(model):
+        raise ValueError(
+            "Pick one real vision model, like provider/model. A router alias can swap models "
+            "between the two arms, and that breaks the comparison."
+        )
 
 
-def summarize_benchmark(run_id: str) -> dict[str, Any]:
-    step_rows = rows("SELECT * FROM benchmark_steps WHERE run_id=? ORDER BY scenario, step, arm", (run_id,))
-    arms: dict[str, Any] = {}
-    for arm in ("visual", "text"):
-        arm_rows = [row for row in step_rows if row["arm"] == arm]
-        count = len(arm_rows)
-        arms[arm] = {
-            "steps": count,
-            "accuracy": round(sum(row["correct"] for row in arm_rows) / max(1, count) * 100, 1),
-            "avg_latency_ms": round(sum(row["latency_ms"] for row in arm_rows) / max(1, count)),
-            "total_input_tokens": sum(row["input_tokens"] for row in arm_rows),
-            "avg_memory_bytes": round(sum(row["memory_bytes"] for row in arm_rows) / max(1, count)),
-            "failures": sum(bool(row["error"]) for row in arm_rows),
-            "models": sorted({row["routed_model"] for row in arm_rows}),
-        }
-    text_tokens = max(1, arms["text"]["total_input_tokens"])
-    summary = {
-        "arms": arms,
-        "accuracy_delta": round(arms["visual"]["accuracy"] - arms["text"]["accuracy"], 1),
-        "visual_token_delta": round((arms["visual"]["total_input_tokens"] / text_tokens - 1) * 100, 1),
-        "mixed_models": len(set(arms["visual"]["models"] + arms["text"]["models"])) > 1,
-    }
-    return {"summary": summary, "steps": step_rows}
+def base_slug(model: str) -> str:
+    # ":free" and similar variant suffixes route to the same weights; only the base slug must match.
+    return model.strip().lower().split(":", 1)[0]
 
 
-def run_benchmark(scenarios: int, depth: int) -> dict[str, Any]:
-    if not active_api_key():
-        raise RuntimeError("Configure an API key before running a live benchmark.")
-    run_id = uuid.uuid4().hex
-    execute(
-        "INSERT INTO benchmark_runs VALUES (?,?,?,?,?,?)",
-        (run_id, now_iso(), "running", scenarios, depth, "{}"),
-    )
+def same_pinned_model(requested: str, resolved: str) -> bool:
+    # Providers may resolve a slug to a dated snapshot of the same model
+    # (gemma-4-26b-a4b-it -> gemma-4-26b-a4b-it-20260403). Accept that; the
+    # per-run comparable_model check still catches drift between the two arms.
+    requested_base, resolved_base = base_slug(requested), base_slug(resolved)
+    return resolved_base == requested_base or resolved_base.startswith(requested_base + "-")
+
+
+def benchmark_model_call(model: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    result = model_chat(model, messages, max_tokens=100, thinking=False, with_metadata=True, temperature=0.0)
+    result.setdefault("model", model)
+    if not same_pinned_model(model, str(result["model"])):
+        raise RuntimeError(f"Pinned-model violation: requested {model}, provider resolved {result['model']}")
+    return result
+
+
+VISION_MODEL_CACHE: dict[str, Any] = {"at": 0.0, "models": []}
+
+
+def list_vision_models() -> list[dict[str, Any]]:
+    if MODEL_PROVIDER != "openrouter":
+        return []
+    if VISION_MODEL_CACHE["models"] and time.time() - VISION_MODEL_CACHE["at"] < 600:
+        return VISION_MODEL_CACHE["models"]
+    response = requests.get(f"{OPENROUTER_BASE_URL}/models", timeout=20)
+    response.raise_for_status()
+    models: list[dict[str, Any]] = []
+    for item in response.json().get("data") or []:
+        architecture = item.get("architecture") or {}
+        if "image" not in (architecture.get("input_modalities") or []):
+            continue
+        pricing = item.get("pricing") or {}
+        try:
+            free = float(pricing.get("prompt") or 0) == 0 and float(pricing.get("completion") or 0) == 0
+        except (TypeError, ValueError):
+            free = False
+        models.append({
+            "id": str(item.get("id") or ""),
+            "name": str(item.get("name") or item.get("id") or ""),
+            "free": free,
+            "context_length": int(item.get("context_length") or 0),
+        })
+    models = [model for model in models if model["id"] and not is_router_alias(model["id"])]
+    models.sort(key=lambda model: (not model["free"], model["name"].lower()))
+    VISION_MODEL_CACHE.update(at=time.time(), models=models)
+    return models
+
+
+def default_benchmark_model() -> str:
+    """BENCHMARK_MODEL if pinned; otherwise the free vision model with the biggest context window.
+
+    Preview/experimental slugs lose: providers pull them fast, which breaks resume and reruns.
+    """
+    if not is_router_alias(BENCHMARK_MODEL):
+        return BENCHMARK_MODEL
     try:
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="piper-benchmark") as executor:
-            visual = executor.submit(run_benchmark_arm, run_id, "visual", scenarios, depth)
-            text = executor.submit(run_benchmark_arm, run_id, "text", scenarios, depth)
-            visual.result()
-            text.result()
-        result = summarize_benchmark(run_id)
-        execute("UPDATE benchmark_runs SET status='complete', summary=? WHERE id=?", (json.dumps(result["summary"]), run_id))
-    except Exception as exc:
-        execute("UPDATE benchmark_runs SET status='failed', summary=? WHERE id=?", (json.dumps({"error": str(exc)}), run_id))
-        raise
-    run = rows("SELECT * FROM benchmark_runs WHERE id=?", (run_id,))[0]
-    run["summary"] = json.loads(run["summary"])
-    return {"run": run, **result}
+        models = list_vision_models()
+    except Exception:
+        return ""
+    pool = [model for model in models if model["free"]] or models
+    if not pool:
+        return ""
+    def stable_then_big(model: dict[str, Any]) -> tuple[bool, int]:
+        preview = any(term in model["id"].lower() for term in ("preview", "-exp", "beta"))
+        return (not preview, model["context_length"])
+    return max(pool, key=stable_then_big)["id"]
 
 
-def latest_benchmark() -> dict[str, Any] | None:
-    found = rows("SELECT * FROM benchmark_runs ORDER BY created_at DESC LIMIT 1")
+def benchmark_runner(model: str) -> BenchmarkRunner:
+    return BenchmarkRunner(DB_PATH, BENCHMARK_RUNS, lambda messages: benchmark_model_call(model, messages))
+
+
+def benchmark_public(run: dict[str, Any]) -> dict[str, Any]:
+    item = dict(run)
+    item["config"] = json.loads(item.get("config") or "{}")
+    item["summary"] = json.loads(item.get("summary") or "{}")
+    total = int(item.get("total_observations") or 0)
+    completed = int(item.get("completed_observations") or 0)
+    item["progress"] = {"completed": completed, "total": total, "percent": round(completed / max(1, total) * 100, 1)}
+    artifacts = rows("SELECT path,size FROM benchmark_v2_artifacts WHERE run_id=? ORDER BY path", (item["id"],))
+    item["artifacts"] = [{**artifact, "url": f"/benchmark-runs/{item['id']}/{artifact['path']}"} for artifact in artifacts]
+    item["warnings"] = [
+        "This pilot estimates effects and variance; it does not establish model-independent superiority.",
+        "Image token accounting may not be directly comparable to text token accounting.",
+    ]
+    return item
+
+
+def list_research_benchmarks() -> list[dict[str, Any]]:
+    return [benchmark_public(item) for item in rows("SELECT * FROM benchmark_v2_runs ORDER BY created_at DESC")]
+
+
+def get_research_benchmark(run_id: str) -> dict[str, Any] | None:
+    found = rows("SELECT * FROM benchmark_v2_runs WHERE id=?", (run_id,))
+    return benchmark_public(found[0]) if found else None
+
+
+def public_observation(row: dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    try:
+        item["expected"] = json.loads(item["expected"])
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return item
+
+
+def rebuild_observation_context(run_id: str, observation: dict[str, Any]) -> tuple[str, bool]:
+    """Rebuild the exact context an observation saw. Trajectories are deterministic, so we
+    regenerate from the stored seed and verify against the recorded hash."""
+    trajectory_rows = rows(
+        "SELECT seed, length FROM benchmark_v2_trajectories WHERE run_id=? AND id=?",
+        (run_id, observation["trajectory_id"]),
+    )
+    if not trajectory_rows:
+        return "", False
+    trajectory = build_trajectory(trajectory_rows[0]["seed"], trajectory_rows[0]["length"])
+    probe = next((item for item in trajectory.probes if item.checkpoint == observation["checkpoint"]), None)
+    if not probe:
+        return "", False
+    context = probe.context
+    if observation["profile"] == "closed_loop":
+        prior = rows(
+            "SELECT checkpoint, answer FROM benchmark_v2_observations WHERE run_id=? AND trajectory_id=? AND arm=? AND checkpoint<? ORDER BY checkpoint",
+            (run_id, observation["trajectory_id"], observation["arm"], observation["checkpoint"]),
+        )
+        feedback = [f"At checkpoint {row['checkpoint']}, the model answered: {row['answer'] or '[no answer]'}" for row in prior]
+        if feedback:
+            context += "\n\nMODEL FEEDBACK\n" + "\n".join(feedback)
+    verified = hashlib.sha256(context.encode("utf-8")).hexdigest() == observation["context_hash"]
+    return context, verified
+
+
+def observation_page_urls(run_id: str, observation: dict[str, Any]) -> list[str]:
+    pages_dir = BENCHMARK_RUNS / run_id / "pages"
+    if not pages_dir.exists():
+        return []
+    pattern = f"{observation['trajectory_id']}-c{observation['checkpoint']}-p*.jpg"
+    return [f"/benchmark-runs/{run_id}/pages/{path.name}" for path in sorted(pages_dir.glob(pattern))]
+
+
+def latest_research_benchmark() -> dict[str, Any] | None:
+    found = rows("SELECT * FROM benchmark_v2_runs ORDER BY created_at DESC LIMIT 1")
+    return benchmark_public(found[0]) if found else None
+
+
+def submit_research_benchmark(config: dict[str, Any], run_id: str | None = None) -> dict[str, Any]:
+    model = str(config["model"])
+    validate_benchmark_model(model)
+    if not active_api_key():
+        raise ValueError("No API key. Add OPENROUTER_API_KEY to .env, then run the test.")
+    run_id = run_id or uuid.uuid4().hex
+    timestamp = now_iso()
+    existing = rows("SELECT id FROM benchmark_v2_runs WHERE id=?", (run_id,))
+    if existing:
+        execute("UPDATE benchmark_v2_runs SET status='queued',phase='queued',cancel_requested=0,error='',updated_at=? WHERE id=?", (timestamp, run_id))
+    else:
+        execute(
+            "INSERT INTO benchmark_v2_runs (id,created_at,updated_at,status,phase,config) VALUES (?,?,?,?,?,?)",
+            (run_id, timestamp, timestamp, "queued", "queued", json.dumps(config, sort_keys=True)),
+        )
+    runner = benchmark_runner(model)
+    with BENCHMARK_FUTURES_LOCK:
+        current = BENCHMARK_FUTURES.get(run_id)
+        if not current or current.done():
+            BENCHMARK_FUTURES[run_id] = BENCHMARK_EXECUTOR.submit(runner.run, run_id)
+    return get_research_benchmark(run_id) or {}
+
+
+def resume_research_benchmark(run_id: str) -> dict[str, Any]:
+    found = get_research_benchmark(run_id)
     if not found:
-        return None
-    run = found[0]
-    run["summary"] = json.loads(run["summary"] or "{}")
-    result = summarize_benchmark(run["id"])
-    return {"run": run, **result}
+        raise ValueError("Benchmark run not found")
+    if found["status"] == "complete":
+        return found
+    return submit_research_benchmark(found["config"], run_id)
 
 
 def insert_message(role: str, content: str, meta: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -926,13 +1012,13 @@ def current_state() -> dict[str, Any]:
         "notes": rows("SELECT * FROM notes ORDER BY created_at DESC LIMIT 30"),
         "memories": [public_memory(item) for item in rows("SELECT * FROM memories ORDER BY created_at DESC LIMIT 100")],
         "edges": rows("SELECT * FROM edges ORDER BY created_at DESC LIMIT 240"),
-        "latest_benchmark": latest_benchmark(),
+        "latest_benchmark": latest_research_benchmark(),
         "config": {
             "main_model": MAIN_MODEL,
             "vision_model": VISION_MODEL,
             "demo_mode": not bool(active_api_key()),
             "provider": MODEL_PROVIDER,
-            "benchmark_model": BENCHMARK_MODEL,
+            "benchmark_model": "" if is_router_alias(BENCHMARK_MODEL) else BENCHMARK_MODEL,
             "decay_hours": DECAY_HOURS,
         },
     }
@@ -1020,20 +1106,90 @@ def decay() -> dict[str, Any]:
     return {"changed": changed, "state": current_state()}
 
 
+@app.get("/api/benchmarks")
+def get_benchmarks() -> dict[str, Any]:
+    return {"runs": list_research_benchmarks()}
+
+
 @app.get("/api/benchmarks/latest")
 def get_latest_benchmark() -> dict[str, Any]:
-    result = latest_benchmark()
+    result = latest_research_benchmark()
     if not result:
-        raise HTTPException(404, "No benchmark has been run")
+        raise HTTPException(404, "No research benchmark has been run")
+    return result
+
+
+@app.get("/api/benchmarks/{run_id}")
+def get_benchmark(run_id: str) -> dict[str, Any]:
+    result = get_research_benchmark(run_id)
+    if not result:
+        raise HTTPException(404, "Benchmark run not found")
     return result
 
 
 @app.post("/api/benchmarks")
 def create_benchmark(request: BenchmarkRequest) -> dict[str, Any]:
     try:
-        return run_benchmark(request.scenarios, request.depth)
-    except RuntimeError as error:
+        return submit_research_benchmark(request.normalized())
+    except ValueError as error:
         raise HTTPException(400, str(error)) from error
+
+
+@app.get("/api/benchmarks/{run_id}/observations")
+def get_benchmark_observations(run_id: str) -> dict[str, Any]:
+    if not rows("SELECT id FROM benchmark_v2_runs WHERE id=?", (run_id,)):
+        raise HTTPException(404, "Benchmark run not found")
+    observations = rows(
+        """SELECT o.*, t.seed, t.length FROM benchmark_v2_observations o
+        LEFT JOIN benchmark_v2_trajectories t ON t.run_id = o.run_id AND t.id = o.trajectory_id
+        WHERE o.run_id=? ORDER BY o.profile, o.trajectory_id, o.checkpoint, o.arm""",
+        (run_id,),
+    )
+    return {"observations": [public_observation(item) for item in observations]}
+
+
+@app.get("/api/benchmarks/{run_id}/observations/{observation_id}")
+def get_benchmark_observation(run_id: str, observation_id: str) -> dict[str, Any]:
+    found = rows("SELECT * FROM benchmark_v2_observations WHERE run_id=? AND id=?", (run_id, observation_id))
+    if not found:
+        raise HTTPException(404, "Observation not found")
+    observation = found[0]
+    attempts = rows(
+        "SELECT attempt, status, latency_ms, error, created_at FROM benchmark_v2_attempts WHERE observation_id=? ORDER BY attempt",
+        (observation_id,),
+    )
+    context, verified = rebuild_observation_context(run_id, observation)
+    return {
+        "observation": public_observation(observation),
+        "attempts": attempts,
+        "context": context,
+        "context_verified": verified,
+        "pages": observation_page_urls(run_id, observation),
+    }
+
+
+@app.get("/api/benchmark-models")
+def get_benchmark_models() -> dict[str, Any]:
+    try:
+        return {"models": list_vision_models()}
+    except Exception as error:
+        return {"models": [], "error": str(error)[:200]}
+
+
+@app.post("/api/benchmarks/{run_id}/resume")
+def resume_benchmark(run_id: str) -> dict[str, Any]:
+    try:
+        return resume_research_benchmark(run_id)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.post("/api/benchmarks/{run_id}/cancel")
+def cancel_benchmark(run_id: str) -> dict[str, Any]:
+    if not rows("SELECT id FROM benchmark_v2_runs WHERE id=?", (run_id,)):
+        raise HTTPException(404, "Benchmark run not found")
+    execute("UPDATE benchmark_v2_runs SET cancel_requested=1,updated_at=? WHERE id=?", (now_iso(), run_id))
+    return get_research_benchmark(run_id) or {}
 
 
 @app.get("/api/artifacts")

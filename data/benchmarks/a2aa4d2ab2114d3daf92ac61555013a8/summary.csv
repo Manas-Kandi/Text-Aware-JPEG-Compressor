@@ -1,0 +1,9 @@
+id,run_id,trajectory_id,profile,arm,trajectory_length,checkpoint,probe_type,prompt,expected,answer,correct,fields_correct,fields_total,status,context_hash,latency_ms,input_tokens,output_tokens,cost,payload_bytes,page_count,resolved_model,provider,attempt_count,error_type,error,created_at,completed_at,field_accuracy
+2b599e2521874ad39542074eaa7baa04,a2aa4d2ab2114d3daf92ac61555013a8,primary-a8169815a5bd2694,primary,jpeg,4,4,historical_fact,What was the original access phrase?,"""harbor-36""","```json
+{""answer"": ""not mentioned""}
+```",0,0,1,complete,c3394202d6955cd79e3f6654c95c5c0672464b83e8438c76e2f1395360b5bbae,1464,334,12,0.0,28816,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:38:41.777030+00:00,2026-07-02T03:38:43.242087+00:00,0.0
+7970db73e3f146deb883a9e05efe883c,a2aa4d2ab2114d3daf92ac61555013a8,primary-a8169815a5bd2694,primary,text,4,4,historical_fact,What was the original access phrase?,"""harbor-36""","```json
+{
+  ""answer"": ""harbor-36""
+}
+```",1,1,1,complete,c3394202d6955cd79e3f6654c95c5c0672464b83e8438c76e2f1395360b5bbae,2417,179,20,0.0,601,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:38:43.249597+00:00,2026-07-02T03:38:45.668691+00:00,1.0

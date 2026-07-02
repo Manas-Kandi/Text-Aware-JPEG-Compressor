@@ -1,0 +1,101 @@
+id,run_id,trajectory_id,profile,arm,trajectory_length,checkpoint,probe_type,prompt,expected,answer,correct,fields_correct,fields_total,status,context_hash,latency_ms,input_tokens,output_tokens,cost,payload_bytes,page_count,resolved_model,provider,attempt_count,error_type,error,created_at,completed_at,field_accuracy
+abf484cf9c0e409b9f3568c037b3c822,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,jpeg,8,4,historical_fact,What was the original access phrase?,"""harbor-73""","```json
+{""answer"": ""access-harbor-73""}
+```",0,0,1,complete,43292b8ad16afa72fe80542c98d6a89cc36872cabff94677175c188665cae717,6087,334,17,0.0,29763,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,3,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:20.560097+00:00,2026-07-02T03:50:26.648767+00:00,0.0
+cb4a7fd3cf42431b85b0107f214cc943,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,text,8,4,historical_fact,What was the original access phrase?,"""harbor-73""",,0,0,1,complete,43292b8ad16afa72fe80542c98d6a89cc36872cabff94677175c188665cae717,10291,0,0,0.0,605,1,,,1,provider,Malformed router response: response contained no choices,2026-07-02T03:49:59.578719+00:00,2026-07-02T03:50:09.871377+00:00,0.0
+307540b37d81470a98a348f72dc5f16d,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,jpeg,8,6,arithmetic,What is the current integer budget?,106,"```json
+{""answer"": 106}
+```",1,1,1,complete,6b584f6f357149556696082d2079b4fa1fbdb2449aab3e1599002ee3564e63a5,2358,334,13,0.0,39358,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:26.672306+00:00,2026-07-02T03:50:29.031553+00:00,1.0
+eec27dd999f04e358364ea12a30e4303,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,text,8,6,arithmetic,What is the current integer budget?,106,"```json
+{
+  ""answer"": 106
+}
+```",1,1,1,complete,6b584f6f357149556696082d2079b4fa1fbdb2449aab3e1599002ee3564e63a5,6978,223,17,0.0,748,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:09.878923+00:00,2026-07-02T03:50:16.858869+00:00,1.0
+22e04f39805640c1ab533400dbad0612,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,jpeg,8,8,multi_hop,Which city is assigned to the current project lead?,"""Lima""","```json
+{
+ ""answer"": ""Lima""
+}
+```",1,1,1,complete,2fcaa7658a688c531132d0747c0f1baaff6ebd11e8085913b2cdaf55ed039480,3993,337,15,0.0,45045,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:29.045919+00:00,2026-07-02T03:50:33.039619+00:00,1.0
+28af80ef04204dd197cfe3579c3599a2,7d3223b29341493a8e178552014e5cc5,primary-396fb599294f6640,primary,text,8,8,multi_hop,Which city is assigned to the current project lead?,"""Lima""","```json
+{
+  ""answer"": ""Lima""
+}
+```",1,1,1,complete,2fcaa7658a688c531132d0747c0f1baaff6ebd11e8085913b2cdaf55ed039480,3679,250,16,0.0,847,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:16.865783+00:00,2026-07-02T03:50:20.546245+00:00,1.0
+2202e6a1d12746dca6d8c4c8d02aebc8,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,jpeg,8,4,historical_fact,What was the original access phrase?,"""cobalt-36""","```json
+{""answer"": ""not provided""}
+```",0,0,1,complete,49f639a45ef05346d87e94369dfc49acaa7f5b910a448865f93a71f7a0878530,2935,334,12,0.0,28738,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:49:33.543382+00:00,2026-07-02T03:49:36.479259+00:00,0.0
+78b136b142d646b4bbe53417ad6ec299,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,text,8,4,historical_fact,What was the original access phrase?,"""cobalt-36""",,0,0,1,complete,49f639a45ef05346d87e94369dfc49acaa7f5b910a448865f93a71f7a0878530,10278,0,0,0.0,603,1,,,1,provider,Malformed router response: response contained no choices,2026-07-02T03:49:41.045430+00:00,2026-07-02T03:49:51.325343+00:00,0.0
+086d77fd3e5e46a883f92d47f1ffa4af,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,jpeg,8,6,multi_hop,Which city is assigned to the current project lead?,"""Busan""","```json
+{
+ ""answer"": ""Busan""
+}
+```",1,1,1,complete,158c475a7f25f8932b0994b2121aa778c339dd538dd0ce2df1fd722bddec837d,1955,337,16,0.0,38642,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:49:36.502334+00:00,2026-07-02T03:49:38.458525+00:00,1.0
+14845357ce464557bc464e4519cdbdaf,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,text,8,6,multi_hop,Which city is assigned to the current project lead?,"""Busan""","```json
+{
+  ""answer"": ""Busan""
+}
+```",1,1,1,complete,158c475a7f25f8932b0994b2121aa778c339dd538dd0ce2df1fd722bddec837d,4039,226,17,0.0,765,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:49:51.332256+00:00,2026-07-02T03:49:55.372499+00:00,1.0
+b10d4c15cc0b4adfb2a23218126b5c30,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,jpeg,8,8,current_state,What is the current project lead?,"""Elian""","```json
+{""answer"": ""Soren""}
+```",0,0,1,complete,05d3fbd47c9c99ffdb0a8be7056311aced9b8b236f4a297dbd2073bb7155f7de,2559,334,12,0.0,44407,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:49:38.478315+00:00,2026-07-02T03:49:41.038775+00:00,0.0
+e7700c986f49496793614e6756b2c9e9,7d3223b29341493a8e178552014e5cc5,primary-613e4effbb3198d6,primary,text,8,8,current_state,What is the current project lead?,"""Elian""","```json
+{
+  ""answer"": ""Elian""
+}
+```",1,1,1,complete,05d3fbd47c9c99ffdb0a8be7056311aced9b8b236f4a297dbd2073bb7155f7de,4190,248,17,0.0,831,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:49:55.379639+00:00,2026-07-02T03:49:59.571322+00:00,1.0
+b94b4db630c84fe39b569404809b31a0,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,jpeg,16,4,historical_fact,What was the original access phrase?,"""cobalt-73""","```json
+{""answer"": ""not mentioned""}
+```",0,0,1,complete,c115b03e0cd44059534365b327a0bb1e2bcaa31cba5d05b3b27843444b7b3507,5034,334,12,0.0,28836,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,3,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:51.114936+00:00,2026-07-02T03:50:56.149948+00:00,0.0
+19a77443ee5e468b95936ca5f9fb89e1,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,text,16,4,historical_fact,What was the original access phrase?,"""cobalt-73""","```json
+{
+  ""answer"": ""cobalt-73""
+}
+```",1,1,1,complete,c115b03e0cd44059534365b327a0bb1e2bcaa31cba5d05b3b27843444b7b3507,1713,178,20,0.0,600,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:51:01.639381+00:00,2026-07-02T03:51:03.354058+00:00,1.0
+893153d7c1df49738aeefb7f6f10739e,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,jpeg,16,8,constraint,Which risk keyword is currently blocked?,"""willow""","```json
+{""answer"": ""willow""}
+```",1,1,1,complete,ca17cc9e81af387283a78ca388b7114be64172b65852eec65e5e200bdffff0f6,1658,334,12,0.0,44360,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:56.174699+00:00,2026-07-02T03:50:57.833870+00:00,1.0
+0911564a9c7644de95c141ca33624d0f,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,text,16,8,constraint,Which risk keyword is currently blocked?,"""willow""",,0,0,1,complete,ca17cc9e81af387283a78ca388b7114be64172b65852eec65e5e200bdffff0f6,3654,0,0,0.0,837,1,,,3,transport,Openrouter API 429: Provider returned error,2026-07-02T03:51:03.360355+00:00,2026-07-02T03:51:07.016088+00:00,0.0
+97ecbf14df3f4326808c649267815e37,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,jpeg,16,12,next_action,What is the next incomplete milestone in dependency order?,"""prototype""","```json
+{""answer"": ""prototype""}
+```",1,1,1,complete,ce083102d8ac10d182f0ea653c108bb048606f0d13fa3557cc5f86513ce2171a,1884,337,11,0.0,58492,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:57.859013+00:00,2026-07-02T03:50:59.743769+00:00,1.0
+489d6d59a1cb4c4192f86afcd3fd5633,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,text,16,12,next_action,What is the next incomplete milestone in dependency order?,"""prototype""","```json
+{
+  ""answer"": ""prototype""
+}
+```",1,1,1,complete,ce083102d8ac10d182f0ea653c108bb048606f0d13fa3557cc5f86513ce2171a,3897,316,16,0.0,1066,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:51:07.020075+00:00,2026-07-02T03:51:10.918260+00:00,1.0
+b1b08d38586d413ca75ccda778b5c771,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,jpeg,16,16,overwritten_value,What is the current operating region after all replacements?,"""Oslo""","```json
+{""answer"": ""Oslo""}
+```",1,1,1,complete,3de3cd9f4182b88178afca7e901afd3b235ba81fdf12462b9cc97fd00d00c66a,1858,337,12,0.0,72709,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:59.773017+00:00,2026-07-02T03:51:01.632544+00:00,1.0
+6c8e29eab03b4660881879cf8de201d0,7d3223b29341493a8e178552014e5cc5,primary-6d9054cd64801b68,primary,text,16,16,overwritten_value,What is the current operating region after all replacements?,"""Oslo""",,0,0,1,complete,3de3cd9f4182b88178afca7e901afd3b235ba81fdf12462b9cc97fd00d00c66a,10465,0,0,0.0,1283,1,,,1,provider,Malformed router response: response contained no choices,2026-07-02T03:51:10.925661+00:00,2026-07-02T03:51:21.392796+00:00,0.0
+dbc31bb2cfaa4dbb94c5e69bd198d297,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,jpeg,16,4,historical_fact,What was the original access phrase?,"""ember-36""","```json
+{""answer"": ""not provided in the context""}
+```",0,0,1,complete,45c35ae438d8fb32b544e869fc99b72db71de3ab48eb9bbf76dedc4989c70865,1387,334,15,0.0,28875,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:43.219093+00:00,2026-07-02T03:50:44.607667+00:00,0.0
+52c57f7252cb4300bd4c6563964419b6,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,text,16,4,historical_fact,What was the original access phrase?,"""ember-36""","```json
+{
+  ""answer"": ""ember-36""
+}
+```",1,1,1,complete,45c35ae438d8fb32b544e869fc99b72db71de3ab48eb9bbf76dedc4989c70865,1642,178,19,0.0,600,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:33.049964+00:00,2026-07-02T03:50:34.693380+00:00,1.0
+c05a4ce713a14a19a4f5fec94b3d536a,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,jpeg,16,8,next_action,What is the next incomplete milestone in dependency order?,"""spec""","```json
+{""answer"": ""prototype""}
+```",0,0,1,complete,4b9875b1d8856da0f07d8f2c0807972447d361db2d671b89672122151360f9eb,1513,337,11,0.0,44490,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:44.631261+00:00,2026-07-02T03:50:46.145699+00:00,0.0
+78e3489a455f45118154fed13dba18c5,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,text,16,8,next_action,What is the next incomplete milestone in dependency order?,"""spec""","```json
+{
+  ""answer"": ""spec""
+}
+```",1,1,1,complete,4b9875b1d8856da0f07d8f2c0807972447d361db2d671b89672122151360f9eb,2435,249,16,0.0,851,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:34.700704+00:00,2026-07-02T03:50:37.137246+00:00,1.0
+6763bcc096e84dc390a833f781a5c6e7,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,jpeg,16,12,overwritten_value,What is the current operating region after all replacements?,"""Kyoto""","```json
+{""answer"": ""Kyoto""}
+```",1,1,1,complete,e0eb8c2c368417b67d0e496521530d7542f40023961333e32bf064a02f70cbd9,2287,337,12,0.0,58735,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:46.172889+00:00,2026-07-02T03:50:48.461504+00:00,1.0
+dcd1ac0ea5af4d478454e543c55aa037,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,text,16,12,overwritten_value,What is the current operating region after all replacements?,"""Kyoto""","```json
+{
+  ""answer"": ""Kyoto""
+}
+```",1,1,1,complete,e0eb8c2c368417b67d0e496521530d7542f40023961333e32bf064a02f70cbd9,2611,317,17,0.0,1066,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:37.144775+00:00,2026-07-02T03:50:39.757516+00:00,1.0
+16f89ff2bfad464dae86c97a87264d2c,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,jpeg,16,16,arithmetic,What is the current integer budget?,127,"```json
+{""answer"": 127}
+```",1,1,1,complete,822bd42d8a0248147613f4b4c4310d4adcfb3f9118a346d08c5e9ae48c378ab5,2601,334,13,0.0,73266,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,1,,,2026-07-02T03:50:48.491071+00:00,2026-07-02T03:50:51.093595+00:00,1.0
+0626c8a8022744b285040bfe162716e6,7d3223b29341493a8e178552014e5cc5,primary-c1ecd48b045c0ad2,primary,text,16,16,arithmetic,What is the current integer budget?,127,"```json
+{
+  ""answer"": 127
+}
+```",1,1,1,complete,822bd42d8a0248147613f4b4c4310d4adcfb3f9118a346d08c5e9ae48c378ab5,3432,383,17,0.0,1255,1,google/gemma-4-26b-a4b-it-20260403:free,Darkbloom,2,transport,Openrouter API 429: Provider returned error,2026-07-02T03:50:39.765249+00:00,2026-07-02T03:50:43.198558+00:00,1.0

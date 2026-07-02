@@ -3,86 +3,153 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Piper agentic memory IDE" />
-  <title>Piper Workbench</title>
-  <script>document.documentElement.dataset.theme=localStorage.getItem('piper-theme')||'dark'</script>
+  <meta name="description" content="Piper: a research rig that tests JPEG pages versus plain text as LLM context" />
+  <title>Piper — JPEG context experiment</title>
+  <script>document.documentElement.dataset.theme=localStorage.getItem('piper-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')</script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="ide">
-    <header class="titlebar">
-      <div class="traffic"><i></i><i></i><i></i></div>
-      <div class="title-command"><span>⌕</span><b>piedpiper</b><small>Agentic memory workbench</small></div>
-      <div class="title-actions"><span class="connection" id="modePill"><i></i><b id="modeText">connecting</b></span><button id="focusChat">Ask Piper</button></div>
-    </header>
-
-    <div class="ide-main">
-      <nav class="activitybar" aria-label="Primary workspace">
-        <div class="activity-top">
-          <button class="activity active" data-panel="explorer" title="Explorer">▱</button>
-          <button class="activity" data-panel="tasks" title="Tasks">✓<b id="tasksBadge" hidden>0</b></button>
-          <button class="activity" data-panel="memory" title="Memory">◎<b id="memoryBadge" hidden>0</b></button>
-          <button class="activity" data-panel="benchmark" title="Benchmark">≋<b id="benchmarkBadge" hidden>0</b></button>
-        </div>
-        <div class="activity-bottom"><button id="themeToggle" title="Theme">◐</button><button id="settingsButton" title="Connection">⚙</button></div>
-      </nav>
-
-      <aside class="sidebar">
-        <section class="side-panel active" id="panelExplorer">
-          <div class="side-title"><span>EXPLORER</span><button id="refreshFiles" title="Refresh">↻</button></div>
-          <div class="project-root"><span>⌄</span><b>PIEDPIPER</b></div>
-          <div class="file-tree" id="fileTree"></div>
-          <div class="outline"><div class="outline-head">OUTLINE</div><p id="outlineText">Select a file to inspect its structure.</p></div>
-        </section>
-
-        <section class="side-panel" id="panelTasks">
-          <div class="side-title"><span>TASKS</span><button id="addTask" title="New task">＋</button></div>
-          <div class="side-summary"><span><b id="openStat">0</b> open</span><span><b id="doneStat">0</b> done</span></div>
-          <div class="task-list" id="taskList"></div>
-        </section>
-
-        <section class="side-panel" id="panelMemory">
-          <div class="side-title"><span>MEMORY GRAPH</span><button id="decayButton" title="Run decay">⌁</button></div>
-          <div class="memory-health"><div><b id="cortexCount">0</b><span>nodes</span></div><div><b id="graphHealth">—</b><span>health</span></div><div><b id="graphMeta">0</b><span>edges</span></div></div>
-          <div class="mini-graph"><svg id="memoryGraph" aria-label="Memory graph"></svg><p id="emptyGraph">No memory nodes yet.</p></div>
-          <div class="memory-list" id="memoryGrid"></div>
-        </section>
-
-        <section class="side-panel" id="panelBenchmark">
-          <div class="side-title"><span>DUAL STREAM</span><button id="runBenchmark">▶</button></div>
-          <p class="side-copy">Compare sequential image-memory and text-memory agents in parallel.</p>
-          <div class="bench-controls"><label>Scenarios<select id="benchmarkScenarios"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label><label>Depth<select id="benchmarkDepth"><option value="4">4</option><option value="6" selected>6</option><option value="8">8</option></select></label></div>
-          <div class="bench-side-result" id="benchmarkSideResult"><p>No completed run.</p></div>
-        </section>
-      </aside>
-
-      <main class="workbench">
-        <div class="editor-tabs"><button class="editor-tab active"><span id="tabIcon">◇</span><b id="tabName">overview.md</b><i>×</i></button><div class="editor-actions"><button id="splitEditor">◫</button><button id="moreEditor">•••</button></div></div>
-        <div class="breadcrumbs" id="breadcrumbs"><span>piedpiper</span><i>›</i><b>overview.md</b></div>
-        <section class="editor" id="editor">
-          <div class="editor-text" id="editorText"><div class="line-gutter" id="lineGutter"></div><pre id="codeContent"></pre></div>
-          <div class="memory-preview" id="memoryPreview" hidden><div class="preview-toolbar"><span>VISUAL MEMORY NODE</span><b id="previewStage"></b></div><img id="previewImage" alt="Memory node"/><div class="preview-meta" id="previewMeta"></div></div>
-          <div class="benchmark-dashboard" id="benchmarkDashboard" hidden></div>
-        </section>
-        <section class="bottom-panel" id="bottomPanel">
-          <div class="bottom-tabs"><button class="active">OUTPUT</button><button>PROBLEMS <b id="problemCount">0</b></button><button>TERMINAL</button><span></span><button id="clearOutput">×</button></div>
-          <div class="output" id="output"><p><time>system</time><span>Piper workbench ready.</span></p></div>
-        </section>
-        <footer class="statusbar"><div><span>⑂ main*</span><span>↻ synced</span></div><div><span id="statusTasks">0 tasks</span><span id="statusMemories">0 memories</span><span>UTF-8</span><span>Python</span></div></footer>
-      </main>
-
-      <aside class="copilot" id="copilot">
-        <div class="copilot-head"><div><span class="piper-mark">P</span><div><b>Piper</b><small>Workspace agent</small></div></div><button id="newThread" title="New thread">＋</button></div>
-        <div class="context-bar" id="retrievalStrip"><span>◎</span><p><b id="retrievalCount">0 memories</b> in workspace context</p></div>
-        <div class="chat-scroll" id="chatScroll"><div class="chat-welcome" id="welcome"><span class="welcome-glyph">✦</span><b>Ask about this workspace</b><p>I can inspect context, create tasks and artifacts, and form visual memories from completed work.</p><button data-prompt="Create a task to review this project architecture.">Create an architecture task</button><button data-prompt="Summarize the current memory graph.">Summarize memory</button></div><div class="message-list" id="messageList"></div></div>
-        <form class="composer" id="composer"><textarea id="messageInput" rows="2" maxlength="16000" placeholder="Ask Piper or delegate a task…"></textarea><div><span>Agent mode</span><button id="sendButton" type="submit" disabled>↑</button></div></form>
-        <p class="copilot-foot">Remote inference · local workspace state</p>
-      </aside>
+  <header class="topbar">
+    <div class="brand"><b>piedpiper</b><span>jpeg context experiment</span></div>
+    <nav class="tabs" aria-label="Views">
+      <button class="tab active" data-view="experiment">Experiment</button>
+      <button class="tab" data-view="runs">Runs</button>
+      <button class="tab" data-view="playground">Playground</button>
+    </nav>
+    <div class="top-actions">
+      <span class="pill" id="statusPill"><i></i><b id="statusText">connecting</b></span>
+      <button class="icon" id="themeToggle" title="Switch theme">◐</button>
     </div>
-  </div>
+  </header>
 
-  <dialog id="taskDialog"><form method="dialog" id="taskForm"><header><b>New task</b><button value="cancel">×</button></header><label>Title<input id="taskTitle" maxlength="200" required placeholder="Implement…" /></label><label>Details<textarea id="taskDetails" rows="5" maxlength="4000" placeholder="Requirements and acceptance criteria"></textarea></label><footer><button value="cancel">Cancel</button><button class="primary" value="default" id="saveTask">Create task</button></footer></form></dialog>
-  <dialog id="connectionDialog"><header><b>Connection</b><button onclick="this.closest('dialog').close()">×</button></header><div class="dialog-copy"><b id="connectionTitle">Backend offline</b><p id="connectionText"></p><code>.venv/bin/python server.py</code></div></dialog>
+  <main>
+    <!-- The experiment. This is the point of the whole project. -->
+    <section class="view active" id="viewExperiment">
+      <div class="hero">
+        <h1>Can a model read its context from JPEG pages?</h1>
+        <p>We build one task log. We show it to one model two ways. Once as plain text. Once as JPEG
+        pictures of the same text. We ask the same questions both times. Then we score the answers.
+        That is the whole experiment.</p>
+      </div>
+
+      <div class="banner" id="demoBanner" hidden>No API key set. Chat works in demo mode. The test needs a real key in <code>.env</code>.</div>
+      <div class="banner error" id="offlineBanner" hidden>Backend is off. Start it: <code>.venv/bin/python -m uvicorn server:app --port 8000</code></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Run test</h2>
+          <label class="field">Pick a vision model
+            <select id="modelSelect"><option value="">loading models…</option></select>
+          </label>
+          <label class="field">Or type a model id
+            <input id="modelCustom" placeholder="provider/model" autocomplete="off" />
+          </label>
+          <div class="field">
+            <span class="field-label">Size</span>
+            <div class="segment" id="presetGroup">
+              <label><input type="radio" name="preset" value="quick" checked><b>Quick</b><small>2 seeds, short logs</small></label>
+              <label><input type="radio" name="preset" value="full"><b>Full</b><small>5 seeds, up to 128 steps</small></label>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="closedLoop" /> Also run the closed-loop stress test</label>
+          <button class="primary big" id="runTest">Run test</button>
+          <p class="hint" id="runHint"></p>
+          <div class="progress-block" id="progressBlock" hidden>
+            <div class="progress-row"><b id="progressPhase">waiting</b><span id="progressCount">0 / 0</span></div>
+            <div class="bar"><i id="progressBar"></i></div>
+            <button class="danger" id="cancelRun">Stop the run</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>How the test works</h2>
+          <ol class="method">
+            <li>We make a fake project log. It is deterministic. Same seed, same log.</li>
+            <li>The log mutates state. Leads change. Budgets move. Old values get replaced.</li>
+            <li>At checkpoints we ask questions. Who leads now? What was the first access phrase?</li>
+            <li>One arm reads plain text. One arm reads JPEG pages of the same text.</li>
+            <li>Same pinned model. Temperature zero. We flip which arm goes first.</li>
+            <li>Python scores it and draws the charts. You read them.</li>
+          </ol>
+          <p class="hint">One run is a pilot. It shows effect size and noise. It does not prove a law.</p>
+        </div>
+      </div>
+
+      <div id="resultDetail"><div class="card"><h2>Result</h2><p class="muted">No runs yet. Run one.</p></div></div>
+    </section>
+
+    <!-- Past runs. -->
+    <section class="view" id="viewRuns">
+      <div class="card">
+        <h2>All runs</h2>
+        <div id="runsTable"><p class="muted">Loading…</p></div>
+      </div>
+      <div id="runDetail"></div>
+    </section>
+
+    <!-- The live agent. It is a demo of the idea, not evidence. -->
+    <section class="view" id="viewPlayground">
+      <div class="hero small">
+        <h1>Playground</h1>
+        <p>This is the live agent. When it finishes work, it saves a JPEG memory node. Nodes fade
+        with time. Recall makes them sharp again. This part is a demo of the idea. The Experiment
+        tab is the evidence.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-head"><h2>Tasks</h2><button class="icon" id="addTask" title="New task">＋</button></div>
+          <div id="taskList"></div>
+          <div class="card-head"><h2>Files the agent made</h2><button class="icon" id="refreshFiles" title="Refresh">↻</button></div>
+          <div id="artifactList"></div>
+        </div>
+        <div class="card chat-card">
+          <div class="card-head"><h2>Chat with Piper</h2><span class="hint" id="chatHint"></span></div>
+          <div class="chat-scroll" id="chatScroll">
+            <div class="chat-welcome" id="welcome">
+              <p>Ask Piper to do small local work. It can make tasks, save notes, and write markdown files.
+              Finished work becomes JPEG memory.</p>
+              <button data-prompt="Create a task to review the latest benchmark run.">Make a review task</button>
+              <button data-prompt="Summarize the current memory graph.">Summarize memory</button>
+            </div>
+            <div id="messageList"></div>
+          </div>
+          <form class="composer" id="composer">
+            <textarea id="messageInput" rows="2" maxlength="16000" placeholder="Tell Piper what to do…"></textarea>
+            <button class="primary" id="sendButton" type="submit" disabled>Send</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Memory</h2><button class="icon" id="decayButton" title="Age all memories one stage">⌁</button></div>
+          <div class="memory-stats"><span><b id="memoryCount">0</b> nodes</span><span><b id="edgeCount">0</b> edges</span><span><b id="memoryHealth">—</b> health</span></div>
+          <div id="memoryGrid"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="taskDialog">
+    <form method="dialog" id="taskForm">
+      <header><b>New task</b><button value="cancel" type="submit" class="icon">×</button></header>
+      <label>Title<input id="taskTitle" maxlength="200" required placeholder="Do the thing" /></label>
+      <label>Details<textarea id="taskDetails" rows="4" maxlength="4000" placeholder="What done looks like"></textarea></label>
+      <footer><button value="cancel">Cancel</button><button class="primary" value="default" id="saveTask">Create task</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="memoryDialog">
+    <header><b id="memoryDialogTitle">Memory</b><button class="icon" onclick="this.closest('dialog').close()">×</button></header>
+    <div class="memory-body">
+      <img id="memoryImage" alt="Memory node JPEG" />
+      <p id="memoryMeta" class="hint"></p>
+      <footer><button class="primary" id="recallMemory">Recall it — make it sharp again</button></footer>
+    </div>
+  </dialog>
+
+  <dialog id="obsDialog">
+    <header><b id="obsTitle">Observation</b><button class="icon" onclick="this.closest('dialog').close()">×</button></header>
+    <div class="obs-body" id="obsBody"></div>
+  </dialog>
+
   <div class="toast" id="toast"></div>
   <script defer src="app.js"></script>
 </body>
