@@ -78,6 +78,7 @@ ENABLE_MEMORY_LLM = os.getenv("ENABLE_MEMORY_LLM", "true").lower() == "true"
 ENABLE_VISION_RECALL = os.getenv("ENABLE_VISION_RECALL", "true").lower() == "true"
 DECAY_HOURS = max(1, int(os.getenv("DECAY_INTERVAL_HOURS", "24")))
 MAX_RETRIEVED = max(1, min(6, int(os.getenv("MAX_RETRIEVED_MEMORIES", "3"))))
+MAX_VISION_RECALL_IMAGES = max(1, min(MAX_RETRIEVED, int(os.getenv("MAX_VISION_RECALL_IMAGES", "2"))))
 
 DB_LOCK = threading.Lock()
 LOGGER = logging.getLogger("piper")
@@ -727,17 +728,46 @@ def image_data_url(image_url: str) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
 
 
+def memory_recall_brief(memories: list[dict[str, Any]]) -> str:
+    if not memories:
+        return "No relevant prior memory was found."
+    blocks: list[str] = []
+    for index, memory in enumerate(memories, 1):
+        meta = memory.get("retrieval_meta") or {}
+        lines = [
+            f"IMAGE {index}: {memory['label']}",
+            f"summary: {memory['summary']}",
+        ]
+        if memory.get("tags"):
+            lines.append("tags: " + ", ".join(memory["tags"][:8]))
+        if meta.get("entities"):
+            lines.append("entities: " + ", ".join(meta["entities"][:8]))
+        if meta.get("outcomes"):
+            lines.append("outcomes: " + " | ".join(meta["outcomes"][:4]))
+        if meta.get("procedures"):
+            lines.append("procedures: " + " | ".join(meta["procedures"][:3]))
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def recall_from_images(memories: list[dict[str, Any]], query: str) -> str:
     if not memories:
         return "No relevant prior memory was found."
-    fallback = "\n\n".join(f"[{m['label']}] {m['summary']}" for m in memories)
+    fallback = memory_recall_brief(memories)
     if not (active_api_key() and ENABLE_VISION_RECALL):
         return fallback
+    visual_memories = memories[:MAX_VISION_RECALL_IMAGES]
     content: list[dict[str, Any]] = [{
         "type": "text",
-        "text": "Read these memory-node images. Extract only information relevant to the query, preserving concrete steps and outcomes. Query: " + query,
+        "text": (
+            "Use the TEXT RETRIEVAL BRIEF first. Inspect the indexed memory-node images only to recover "
+            "visual details, exact wording, or layout that the brief may omit. Preserve concrete steps and "
+            "outcomes. Cite IMAGE numbers when grounding a fact.\n\nQUERY\n"
+            + query + "\n\nTEXT RETRIEVAL BRIEF\n" + fallback
+        ),
     }]
-    for memory in memories:
+    for index, memory in enumerate(visual_memories, 1):
+        content.append({"type": "text", "text": f"IMAGE {index}: {memory['label']}"})
         content.append({"type": "image_url", "image_url": {"url": image_data_url(memory["image_url"])}})
     try:
         return model_chat(VISION_MODEL, [{"role": "user", "content": content}], 900)

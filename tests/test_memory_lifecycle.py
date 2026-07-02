@@ -70,6 +70,29 @@ class MemoryLifecycleTest(unittest.TestCase):
         self.assertEqual(retrieved[0]["id"], aurora["id"])
         self.assertIn("entities", retrieved[0]["retrieval_meta"])
         self.assertIn("outcomes", retrieved[0]["retrieval_meta"])
+        brief = server.recall_from_images(retrieved, "What happened to Aurora?")
+        self.assertIn("IMAGE 1:", brief)
+        self.assertIn("summary:", brief)
+        self.assertIn("outcomes:", brief)
+
+    def test_vision_recall_uses_indexed_top_images_with_text_brief(self):
+        memories = [
+            server.create_memory(f"TASK COMPLETED\nProject {name} updated.\nOUTCOME\n{name} finished.")
+            for name in ("Aurora", "Borealis", "Cygnus")
+        ]
+        server.OPENROUTER_API_KEY = "test-key"
+        try:
+            with patch.object(server, "model_chat", return_value="vision recall") as model_chat:
+                result = server.recall_from_images(memories, "What happened?")
+            self.assertEqual(result, "vision recall")
+            content = model_chat.call_args.args[1][0]["content"]
+            image_count = sum(1 for item in content if item["type"] == "image_url")
+            self.assertEqual(image_count, server.MAX_VISION_RECALL_IMAGES)
+            self.assertIn("TEXT RETRIEVAL BRIEF", content[0]["text"])
+            self.assertIn("IMAGE 1:", content[0]["text"])
+            self.assertIn("Cite IMAGE numbers", content[0]["text"])
+        finally:
+            server.OPENROUTER_API_KEY = ""
 
 
 if __name__ == "__main__":
