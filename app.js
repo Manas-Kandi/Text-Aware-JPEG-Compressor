@@ -420,13 +420,16 @@ function tokenTradeoffHtml(arms, tradeoff) {
   const savedText = saved >= 0
     ? `${formatCompact(saved)} fewer reported input tokens`
     : `${formatCompact(Math.abs(saved))} more reported input tokens`;
+  const savedPercentText = saved >= 0
+    ? `${savedPct.toFixed(1)}% fewer than text`
+    : `${Math.abs(savedPct).toFixed(1)}% more than text`;
   const accuracyText = `${accuracyDelta >= 0 ? '+' : ''}${accuracyDelta.toFixed(2)} accuracy points`;
   const latencyText = `${latencyDelta >= 0 ? '+' : ''}${formatCompact(latencyDelta)} ms median latency`;
   const payloadText = `${payloadDelta >= 0 ? '+' : ''}${payloadDelta.toFixed(1)}% request bytes`;
   return `<div class="card tradeoff-card">
     <h2>Token context tradeoff</h2>
     <div class="tradeoff-grid">
-      <div><span>Saved context</span><b>${escapeHtml(savedText)}</b><small>${savedPct.toFixed(1)}% vs text · provider reported</small></div>
+      <div><span>Input token delta</span><b>${escapeHtml(savedText)}</b><small>${escapeHtml(savedPercentText)} · provider reported</small></div>
       <div><span>Accuracy tradeoff</span><b>${escapeHtml(accuracyText)}</b><small>JPEG minus text field accuracy</small></div>
       <div><span>Runtime tradeoff</span><b>${escapeHtml(latencyText)}</b><small>${escapeHtml(payloadText)} · JPEG minus text</small></div>
     </div>
