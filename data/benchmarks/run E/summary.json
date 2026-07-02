@@ -1,0 +1,225 @@
+{
+  "observations": 56,
+  "profiles": {
+    "closed_loop": {
+      "observations": 8,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 75.0,
+          "probe_accuracy": 75.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 1437,
+          "input_tokens": 6262,
+          "output_tokens": 68,
+          "payload_bytes": 394970,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            75.0,
+            75.0
+          ]
+        },
+        "text": {
+          "field_accuracy": 75.0,
+          "probe_accuracy": 75.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 821,
+          "input_tokens": 1928,
+          "output_tokens": 63,
+          "payload_bytes": 8117,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            75.0,
+            75.0
+          ]
+        }
+      },
+      "comparable_model": true,
+      "tradeoff": {
+        "input_tokens_saved": -4334,
+        "input_token_savings_percent": -224.79,
+        "accuracy_delta_points": 0.0,
+        "latency_delta_ms": 616,
+        "payload_bytes_delta_percent": 4765.96,
+        "cost_delta": 0.0
+      }
+    },
+    "density_sweep": {
+      "observations": 40,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 30.0,
+          "probe_accuracy": 30.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": -0.0003,
+          "median_latency_ms": 2220,
+          "input_tokens": 117713,
+          "output_tokens": 347,
+          "payload_bytes": 11176691,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            15.0,
+            45.0
+          ]
+        },
+        "text": {
+          "field_accuracy": 50.0,
+          "probe_accuracy": 50.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 1026,
+          "input_tokens": 143554,
+          "output_tokens": 343,
+          "payload_bytes": 596281,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            50.0,
+            50.0
+          ]
+        }
+      },
+      "comparable_model": true,
+      "tradeoff": {
+        "input_tokens_saved": 25841,
+        "input_token_savings_percent": 18.0,
+        "accuracy_delta_points": -20.0,
+        "latency_delta_ms": 1194,
+        "payload_bytes_delta_percent": 1774.4,
+        "cost_delta": 0.0
+      }
+    },
+    "primary": {
+      "observations": 8,
+      "arms": {
+        "jpeg": {
+          "field_accuracy": 75.0,
+          "probe_accuracy": 75.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 1208,
+          "input_tokens": 5110,
+          "output_tokens": 79,
+          "payload_bytes": 215921,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            75.0,
+            75.0
+          ]
+        },
+        "text": {
+          "field_accuracy": 75.0,
+          "probe_accuracy": 75.0,
+          "trajectory_success": 0.0,
+          "degradation_per_transition": 0.0,
+          "median_latency_ms": 874,
+          "input_tokens": 1289,
+          "output_tokens": 65,
+          "payload_bytes": 5529,
+          "cost": 0.0,
+          "failures": 0,
+          "resolved_models": [
+            "openai/gpt-5-nano-2025-08-07"
+          ],
+          "ci95": [
+            75.0,
+            75.0
+          ]
+        }
+      },
+      "comparable_model": true,
+      "tradeoff": {
+        "input_tokens_saved": -3821,
+        "input_token_savings_percent": -296.43,
+        "accuracy_delta_points": 0.0,
+        "latency_delta_ms": 334,
+        "payload_bytes_delta_percent": 3805.25,
+        "cost_delta": 0.0
+      }
+    }
+  },
+  "token_crossover": {
+    "closed_loop": {
+      "first_jpeg_token_win_length": null,
+      "points": [
+        {
+          "trajectory_length": 32,
+          "jpeg_input_tokens": 1565.5,
+          "text_input_tokens": 482.0,
+          "input_tokens_saved_by_jpeg": -1083.5
+        }
+      ]
+    },
+    "density_sweep": {
+      "first_jpeg_token_win_length": 512,
+      "points": [
+        {
+          "trajectory_length": 128,
+          "jpeg_input_tokens": 1566.25,
+          "text_input_tokens": 1270.0,
+          "input_tokens_saved_by_jpeg": -296.25
+        },
+        {
+          "trajectory_length": 256,
+          "jpeg_input_tokens": 2429.5,
+          "text_input_tokens": 2402.5,
+          "input_tokens_saved_by_jpeg": -27.0
+        },
+        {
+          "trajectory_length": 512,
+          "jpeg_input_tokens": 4156.75,
+          "text_input_tokens": 4681.0,
+          "input_tokens_saved_by_jpeg": 524.25
+        },
+        {
+          "trajectory_length": 1024,
+          "jpeg_input_tokens": 7326.25,
+          "text_input_tokens": 9226.25,
+          "input_tokens_saved_by_jpeg": 1900.0
+        },
+        {
+          "trajectory_length": 2048,
+          "jpeg_input_tokens": 13949.5,
+          "text_input_tokens": 18308.75,
+          "input_tokens_saved_by_jpeg": 4359.25
+        }
+      ]
+    },
+    "primary": {
+      "first_jpeg_token_win_length": null,
+      "points": [
+        {
+          "trajectory_length": 16,
+          "jpeg_input_tokens": 1277.5,
+          "text_input_tokens": 322.25,
+          "input_tokens_saved_by_jpeg": -955.25
+        }
+      ]
+    }
+  },
+  "charts": [
+    "charts/accuracy-by-length.png",
+    "charts/accuracy-by-probe.png",
+    "charts/token-crossover-by-density.png"
+  ]
+}
